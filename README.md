@@ -1,1 +1,79 @@
-# daguan-summer-scheduler
+# 大觀國中暑期排課系統
+
+這是依據「大觀國中暑期課表排課系統 Codex 可執行開發任務書」建立的 MVP。前端可直接放在 GitHub Pages，排課演算法在瀏覽器端執行，Google Apps Script 只負責讀寫 Google Sheets。
+
+## 目前完成
+
+- 管理者 / 教師登入，未設定 GAS 時使用內建示範資料。
+- 國二 3 週、國三 5 週，每日 4 節，以第 1-2 節與第 3-4 節為固定連堂區塊。
+- 班級課表與教師課表檢視。
+- 一鍵自動排課，保留鎖定與預排課程。
+- 預排 / 鎖定編輯面板。
+- 連堂拖拉調課，若產生衝突會退回。
+- 教師撞課、班級同科連四、同班同科同老師、教師週次、授課班級、場地容量、社會科指定科目等檢查。
+- 社會科自動 / 手動安排。
+- 版本歷史，本機可儲存與載入；設定 GAS 後可寫入 Sheets。
+- 班級、教師、總課表 CSV 匯出；PDF 可用瀏覽器列印。
+- 班級 / 教師 PDF 輸出會列出 5 個週次，並顯示週次日期，例如 `第 1 週 7/13~7/17`。
+- 規則式最佳化建議，預留後續 AI API 串接位置。
+
+## 快速使用
+
+直接開啟 `index.html` 即可測試示範資料。部署到 GitHub Pages 時，將整個資料夾推到 repository，並啟用 Pages。
+
+示範帳號：
+
+| 角色 | Email | 密碼 |
+|---|---|---|
+| 管理者 | admin@daguan.ntpc.edu.tw | admin123 |
+| 教師 | teacher@daguan.ntpc.edu.tw | teacher123 |
+
+## 連接 Google Sheets
+
+1. 依照 `gas/README_GAS_DEPLOY.md` 建立 Google Sheets 與部署 Apps Script Web App。
+2. 打開系統後進入「資料設定」。
+3. 貼上 GAS Web App URL 並儲存。
+4. 系統會重新讀取 Sheets 資料；若 URL 空白，會清楚顯示目前使用示範資料。
+
+GAS 的 `initializeSheets` 會建立繁體中文分頁與中文表頭，例如「使用者帳號」「教師設定」「班級設定」。前端會自動把中文表頭對應回程式欄位。
+
+「教師設定」最後一欄「授課班級」可填 `901,902` 這種逗號分隔清單；留空代表該教師可授課所有班級。
+
+## 暑輔日期設定
+
+週次日期由 `System_Settings` 的 `scheduleStartDate` 控制，請填第一週星期一日期。內建示範值為 `2026-07-13`，因此第 1 週會顯示 `7/13~7/17`。
+
+## 排課規則設計藍圖
+
+- 同一班、同一科目，必須由同一位老師授課。
+- 教師設定的「授課班級」會限制老師可被排入的班級；留空代表可授課所有班級。
+- 自動排課會先依「班級＋科目」決定授課老師，再依老師「可授課週次」拆分每週課程。
+- 若老師 1 到 5 週都可授課，系統會盡量把總節數平均分散到每週，例如國文 20 節會排成每週 4 節。
+- 若授課老師只能上部分週次，系統會把節數壓縮到可授課週次內，例如 20 節且只能上第 1、2、3 週時，會優先排成第 1 週 8 節、第 2 週 8 節、第 3 週 4 節。
+- 預排與鎖定課程會優先保留，系統只會補足尚未達成的週次與節數。
+
+## 專案結構
+
+```text
+index.html
+css/style.css
+js/config.js
+js/api.js
+js/auth.js
+js/scheduler.js
+js/constraints.js
+js/dragdrop.js
+js/exporter.js
+js/version.js
+js/social-assignment.js
+js/ai-optimizer.js
+js/app.js
+gas/Code.gs
+gas/README_GAS_DEPLOY.md
+AGENTS.md
+README.md
+```
+
+## 開發備註
+
+第一版使用簡易 hash 驗證帳密，正式上線建議改為 Google OAuth。多人即時共同編輯、權限細分、AI API 串接可在目前模組基礎上逐步擴充。

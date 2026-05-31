@@ -1,0 +1,1046 @@
+(function (global) {
+  const state = {
+    data: null,
+    schedule: [],
+    currentUser: null,
+    activeView: "schedule",
+    viewMode: "class",
+    selectedClassId: "",
+    selectedTeacherId: "",
+    selectedWeek: 1,
+    selectedSlot: null,
+    issues: [],
+    printAllWeeks: false,
+  };
+
+  const els = {};
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function toast(message, type) {
+    const item = document.createElement("div");
+    item.className = `toast ${type || ""}`.trim();
+    item.textContent = message;
+    els.toastRegion.appendChild(item);
+    setTimeout(() => item.remove(), 3800);
+  }
+
+  function canEdit() {
+    return global.DgAuth.canEdit(state.currentUser);
+  }
+
+  async function loadData() {
+    try {
+      state.data = await global.DgApi.readAllTables();
+    } catch (error) {
+      state.data = global.DgConfig.cloneMockData();
+      toast(`讀取遠端資料失敗，已改用示範資料：${error.message}`, "error");
+    }
+    state.data.socialAssignments = global.DgSocialAssignment.autoAssign(state.data, true);
+  }
+
+  function setupInitialState() {
+    const classes = state.data.classes || [];
+    const teachers = state.data.teachers || [];
+    state.selectedClassId = state.selectedClassId || classes[0]?.classId || "";
+    state.selectedTeacherId = state.currentUser?.teacherId || teachers[0]?.teacherId || "";
+    state.viewMode = state.currentUser?.role === "teacher" ? "teacher" : "class";
+
+    const activeVersion = global.DgVersion.listVersions().find((version) => version.isActive);
+    if (activeVersion?.schedule?.length) {
+      state.schedule = activeVersion.schedule;
+    } else {
+      const result = global.DgScheduler.autoSchedule(state.data, []);
+      state.schedule = result.schedule;
+    }
+    refreshIssues();
+  }
+
+  function refreshIssues() {
+    state.issues = global.DgConstraints.validateSchedule(state.schedule, state.data);
+  }
+
+  function hardIssues() {
+    return state.issues.filter((issue) => issue.level === "error");
+  }
+
+  function bindElements() {
+    [
+      "loginView",
+      "appShell",
+      "loginForm",
+      "loginEmail",
+      "loginPassword",
+      "loginGasUrl",
+      "loginMessage",
+      "apiState",
+      "currentUserLabel",
+      "logoutButton",
+      "apiNotice",
+      "viewModeSelect",
+      "classSelectorWrap",
+      "teacherSelectorWrap",
+      "classSelect",
+      "teacherSelect",
+      "weekSelect",
+      "autoScheduleButton",
+      "validateButton",
+      "saveVersionButton",
+      "printButton",
+      "scheduleContainer",
+      "socialTable",
+      "autoSocialButton",
+      "conflictList",
+      "copyConflictButton",
+      "versionForm",
+      "versionName",
+      "versionNote",
+      "versionList",
+      "settingsForm",
+      "gasUrlInput",
+      "clearGasUrlButton",
+      "schemaPreview",
+      "editorPanel",
+      "closeEditorButton",
+      "lessonForm",
+      "editorSlotLabel",
+      "lessonSubject",
+      "lessonTeacher",
+      "lessonRoom",
+      "lessonLocked",
+      "lessonNote",
+      "clearLessonButton",
+      "editorMessage",
+      "toastRegion",
+      "metricClasses",
+      "metricLessons",
+      "metricConflicts",
+    ].forEach((id) => {
+      els[id] = $(id);
+    });
+  }
+
+  function bindEvents() {
+    window.addEventListener("error", (event) => {
+      const message = event.error?.message || event.message || "未知錯誤";
+      if (els.loginMessage && !els.loginView.classList.contains("hidden")) {
+        els.loginMessage.textContent = message;
+      }
+      toast(`系統錯誤：${message}`, "error");
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      const message = event.reason?.message || String(event.reason || "未知錯誤");
+      if (els.loginMessage && !els.loginView.classList.contains("hidden")) {
+        els.loginMessage.textContent = message;
+      }
+      toast(`系統錯誤：${message}`, "error");
+    });
+
+    els.loginForm.addEventListener("submit", handleLogin);
+    document.querySelectorAll("[data-demo-login]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const demo = global.DgAuth.demoAccounts[button.dataset.demoLogin];
+        els.loginEmail.value = demo.email;
+        els.loginPassword.value = demo.password;
+        els.loginForm.requestSubmit();
+      });
+    });
+
+    els.logoutButton.addEventListener("click", () => {
+      global.DgAuth.logout();
+      state.currentUser = null;
+      showLogin();
+    });
+
+    document.querySelectorAll(".nav-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.activeView = button.dataset.view;
+        renderAll();
+      });
+    });
+
+    els.viewModeSelect.addEventListener("change", () => {
+      state.viewMode = els.viewModeSelect.value;
+      if (state.currentUser?.role === "teacher") state.viewMode = "teacher";
+      state.selectedWeek = 1;
+      closeEditor();
+      renderAll();
+    });
+
+    els.classSelect.addEventListener("change", () => {
+      state.selectedClassId = els.classSelect.value;
+      state.selectedWeek = 1;
+      closeEditor();
+      renderAll();
+    });
+
+    els.teacherSelect.addEventListener("change", () => {
+      state.selectedTeacherId = els.teacherSelect.value;
+      state.selectedWeek = 1;
+      closeEditor();
+      renderAll();
+    });
+
+    els.weekSelect.addEventListener("change", () => {
+      state.selectedWeek = Number(els.weekSelect.value);
+      closeEditor();
+      renderAll();
+    });
+
+    els.autoScheduleButton.addEventListener("click", handleAutoSchedule);
+    els.validateButton.addEventListener("click", () => {
+      refreshIssues();
+      state.activeView = "conflicts";
+      renderAll();
+      toast(hardIssues().length ? "檢查完成，仍有硬性衝突。" : "檢查完成，沒有硬性衝突。");
+    });
+
+    els.saveVersionButton.addEventListener("click", () => {
+      state.activeView = "versions";
+      renderAll();
+      els.versionName.focus();
+    });
+
+    els.printButton.addEventListener("click", () => printCurrentSchedule());
+    els.copyConflictButton.addEventListener("click", copyConflictText);
+    els.versionForm.addEventListener("submit", handleCreateVersion);
+    els.settingsForm.addEventListener("submit", handleSaveSettings);
+    els.clearGasUrlButton.addEventListener("click", () => {
+      global.DgConfig.clearApiUrl();
+      els.gasUrlInput.value = "";
+      renderApiState();
+      toast("已清除 GAS URL，目前改用示範資料。");
+    });
+
+    els.autoSocialButton.addEventListener("click", () => {
+      state.data.classes = state.data.classes.map((classInfo) => ({ ...classInfo, socialMode: "auto" }));
+      state.data.socialAssignments = global.DgSocialAssignment.autoAssign(state.data, false);
+      refreshIssues();
+      renderAll();
+      toast("已重新平均分配社會科。");
+    });
+
+    els.socialTable.addEventListener("change", handleSocialChange);
+    els.scheduleContainer.addEventListener("click", handleScheduleClick);
+    els.closeEditorButton.addEventListener("click", closeEditor);
+    els.lessonForm.addEventListener("submit", handleLessonSubmit);
+    els.lessonSubject.addEventListener("change", () => updateLessonTeacherOptions());
+    els.clearLessonButton.addEventListener("click", handleClearLesson);
+    document.querySelectorAll("[data-export]").forEach((button) => button.addEventListener("click", handleExport));
+
+    global.DgDragDrop.bind({
+      container: els.scheduleContainer,
+      onMove: handleMoveLesson,
+    });
+  }
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    els.loginMessage.textContent = "";
+    if (els.loginGasUrl.value.trim()) {
+      global.DgConfig.setApiUrl(els.loginGasUrl.value.trim());
+      renderApiState();
+      await loadData();
+    }
+    try {
+      state.currentUser = await global.DgAuth.login(els.loginEmail.value, els.loginPassword.value, state.data);
+      setupInitialState();
+      showApp();
+    } catch (error) {
+      els.loginMessage.textContent = error.message;
+    }
+  }
+
+  function showLogin() {
+    els.loginView.classList.remove("hidden");
+    els.appShell.classList.add("hidden");
+  }
+
+  function showApp() {
+    els.loginView.classList.add("hidden");
+    els.appShell.classList.remove("hidden");
+    renderAll();
+  }
+
+  function renderAll() {
+    renderApiState();
+    renderNavigation();
+    renderUserState();
+    renderSelectors();
+    renderMetrics();
+    renderActiveView();
+    renderSchedule();
+    renderSocialTable();
+    renderConflicts();
+    renderVersions();
+    renderSettings();
+  }
+
+  function renderApiState() {
+    const hasApi = global.DgApi.hasRemote();
+    els.apiState.textContent = hasApi ? "已設定 GAS" : "尚未設定 GAS";
+    els.apiState.className = `status-pill ${hasApi ? "ok" : "warning"}`;
+    els.apiNotice.classList.toggle("hidden", hasApi);
+    els.gasUrlInput.value = global.DgConfig.getApiUrl();
+    if (els.loginGasUrl) els.loginGasUrl.value = global.DgConfig.getApiUrl();
+  }
+
+  function renderNavigation() {
+    document.querySelectorAll(".nav-button").forEach((button) => {
+      button.classList.toggle("active", button.dataset.view === state.activeView);
+    });
+    document.querySelectorAll(".view-panel").forEach((panel) => panel.classList.remove("active"));
+    $(`${state.activeView}View`)?.classList.add("active");
+  }
+
+  function renderUserState() {
+    const roleLabel = state.currentUser?.role === "admin" ? "管理者" : "教師";
+    els.currentUserLabel.textContent = `${state.currentUser?.name || ""}｜${roleLabel}`;
+    const editable = canEdit();
+    [els.autoScheduleButton, els.saveVersionButton, els.autoSocialButton].forEach((button) => {
+      button.disabled = !editable;
+    });
+    els.viewModeSelect.disabled = state.currentUser?.role === "teacher";
+  }
+
+  function renderSelectors() {
+    const classes = state.data.classes || [];
+    const teachers = state.data.teachers || [];
+    if (!classes.some((item) => item.classId === state.selectedClassId)) {
+      state.selectedClassId = classes[0]?.classId || "";
+    }
+    if (!teachers.some((item) => item.teacherId === state.selectedTeacherId)) {
+      state.selectedTeacherId = state.currentUser?.teacherId || teachers[0]?.teacherId || "";
+    }
+
+    els.viewModeSelect.value = state.viewMode;
+    els.classSelect.innerHTML = classes
+      .map((item) => `<option value="${escapeHtml(item.classId)}">${escapeHtml(item.className)}</option>`)
+      .join("");
+    els.classSelect.value = state.selectedClassId;
+
+    const teacherOptions =
+      state.currentUser?.role === "teacher"
+        ? teachers.filter((teacher) => teacher.teacherId === state.currentUser.teacherId)
+        : teachers;
+    els.teacherSelect.innerHTML = teacherOptions
+      .map((item) => `<option value="${escapeHtml(item.teacherId)}">${escapeHtml(item.teacherName)}（${escapeHtml(item.subjectGroup)}）</option>`)
+      .join("");
+    els.teacherSelect.value = state.selectedTeacherId;
+    els.teacherSelect.disabled = state.currentUser?.role === "teacher";
+
+    els.classSelectorWrap.classList.toggle("hidden", state.viewMode !== "class");
+    els.teacherSelectorWrap.classList.toggle("hidden", state.viewMode !== "teacher");
+
+    const maxWeeks =
+      state.viewMode === "class"
+        ? global.DgScheduler.getGradeWeeks((classes.find((item) => item.classId === state.selectedClassId) || {}).grade)
+        : Math.max(...Object.values(global.DgConfig.gradeSettings).map((item) => item.weeks));
+    if (state.selectedWeek > maxWeeks) state.selectedWeek = maxWeeks;
+    els.weekSelect.innerHTML = Array.from({ length: maxWeeks }, (_, index) => index + 1)
+      .map((week) => `<option value="${week}">第 ${week} 週</option>`)
+      .join("");
+    els.weekSelect.value = state.selectedWeek;
+  }
+
+  function renderMetrics() {
+    els.metricClasses.textContent = String((state.data.classes || []).length);
+    els.metricLessons.textContent = String(state.schedule.length);
+    els.metricConflicts.textContent = String(hardIssues().length);
+  }
+
+  function renderActiveView() {
+    document.querySelectorAll(".view-panel").forEach((panel) => panel.classList.remove("active"));
+    $(`${state.activeView}View`)?.classList.add("active");
+  }
+
+  function renderSchedule() {
+    refreshIssues();
+    const issueIds = global.DgConstraints.lessonsWithIssues(state.schedule, state.issues);
+    if (state.viewMode === "teacher") {
+      renderTeacherSchedule(issueIds);
+      return;
+    }
+    renderClassSchedule(issueIds);
+  }
+
+  function maxOutputWeeks() {
+    return Math.max(...Object.values(global.DgConfig.gradeSettings).map((item) => item.weeks), 5);
+  }
+
+  function weekRangeLabel(week) {
+    return `第 ${week} 週 ${global.DgConfig.getWeekDateRange(week, state.data)}`;
+  }
+
+  function dayHeaderLabel(week, day) {
+    const date = global.DgConfig.getDayDate(week, day.id, state.data);
+    return `${day.label}<span>${global.DgConfig.formatMonthDay(date)}</span>`;
+  }
+
+  function renderScheduleHeading(title, subtitle) {
+    return `
+      <div class="schedule-output-heading">
+        <h3>${escapeHtml(title)}</h3>
+        <p>${escapeHtml(subtitle)}</p>
+      </div>
+    `;
+  }
+
+  function renderWeekTitle(week) {
+    return `<h3 class="week-title">${escapeHtml(weekRangeLabel(week))}</h3>`;
+  }
+
+  function renderClassWeekTable(classInfo, week, issueIds) {
+    const rows = global.DgConfig.blocks
+      .map((block) => {
+        const cells = global.DgConfig.days
+          .map((day) => {
+            const slot = { classId: classInfo.classId, week, day: day.id, blockStart: block.start };
+            const lesson = global.DgScheduler.occupiedAt(state.schedule, slot);
+            return renderSlot(slot, lesson, issueIds, false);
+          })
+          .join("");
+        return `<tr><th class="slot-label-cell"><span>${escapeHtml(block.label)}</span>連堂區塊</th>${cells}</tr>`;
+      })
+      .join("");
+
+    return `
+      <table class="schedule-table" aria-label="${escapeHtml(classInfo.className)} ${escapeHtml(weekRangeLabel(week))} 課表">
+        <thead>
+          <tr>
+            <th>節次</th>
+            ${global.DgConfig.days.map((day) => `<th>${dayHeaderLabel(week, day)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  function renderTeacherWeekTable(teacher, week, issueIds) {
+    const rows = global.DgConfig.blocks
+      .map((block) => {
+        const cells = global.DgConfig.days
+          .map((day) => {
+            const lessons = state.schedule.filter(
+              (lesson) =>
+                lesson.teacherId === teacher.teacherId &&
+                Number(lesson.week) === Number(week) &&
+                Number(lesson.day) === day.id &&
+                Number(lesson.blockStart) === block.start
+            );
+            const body = lessons.length
+              ? lessons.map((lesson) => renderCourseCard(lesson, issueIds, { showClass: true, draggable: false })).join("")
+              : `<div class="empty-slot">未排課</div>`;
+            return `<td class="drop-slot readonly">${body}</td>`;
+          })
+          .join("");
+        return `<tr><th class="slot-label-cell"><span>${escapeHtml(block.label)}</span>連堂區塊</th>${cells}</tr>`;
+      })
+      .join("");
+
+    return `
+      <table class="schedule-table" aria-label="${escapeHtml(teacher.teacherName)} ${escapeHtml(weekRangeLabel(week))} 課表">
+        <thead>
+          <tr>
+            <th>節次</th>
+            ${global.DgConfig.days.map((day) => `<th>${dayHeaderLabel(week, day)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  function renderClassSchedule(issueIds) {
+    const classInfo = (state.data.classes || []).find((item) => item.classId === state.selectedClassId);
+    if (!classInfo) {
+      els.scheduleContainer.innerHTML = `<p>尚未建立班級資料。</p>`;
+      return;
+    }
+
+    if (state.printAllWeeks) {
+      const weeks = Array.from({ length: maxOutputWeeks() }, (_, index) => index + 1);
+      els.scheduleContainer.innerHTML = `
+        ${renderScheduleHeading(`${classInfo.className} 班級課表`, "大觀國中暑期輔導課表")}
+        <div class="all-week-schedule">
+          ${weeks.map((week) => `<section class="week-block">${renderWeekTitle(week)}${renderClassWeekTable(classInfo, week, issueIds)}</section>`).join("")}
+        </div>
+      `;
+      return;
+    }
+
+    els.scheduleContainer.innerHTML = `
+      ${renderScheduleHeading(`${classInfo.className} 班級課表`, weekRangeLabel(state.selectedWeek))}
+      ${renderClassWeekTable(classInfo, state.selectedWeek, issueIds)}
+    `;
+  }
+
+  function renderTeacherSchedule(issueIds) {
+    const teacher = (state.data.teachers || []).find((item) => item.teacherId === state.selectedTeacherId);
+    if (!teacher) {
+      els.scheduleContainer.innerHTML = `<p>尚未建立教師資料。</p>`;
+      return;
+    }
+
+    if (state.printAllWeeks) {
+      const weeks = Array.from({ length: maxOutputWeeks() }, (_, index) => index + 1);
+      els.scheduleContainer.innerHTML = `
+        ${renderScheduleHeading(`${teacher.teacherName} 教師課表`, "大觀國中暑期輔導課表")}
+        <div class="all-week-schedule">
+          ${weeks.map((week) => `<section class="week-block">${renderWeekTitle(week)}${renderTeacherWeekTable(teacher, week, issueIds)}</section>`).join("")}
+        </div>
+      `;
+      return;
+    }
+
+    els.scheduleContainer.innerHTML = `
+      ${renderScheduleHeading(`${teacher.teacherName} 教師課表`, weekRangeLabel(state.selectedWeek))}
+      ${renderTeacherWeekTable(teacher, state.selectedWeek, issueIds)}
+    `;
+  }
+
+  function renderSlot(slot, lesson, issueIds, readonly) {
+    const body = lesson
+      ? renderCourseCard(lesson, issueIds, { showClass: false, draggable: canEdit() && !lesson.isLocked })
+      : `<div class="empty-slot">${canEdit() ? "點選預排" : "未排課"}</div>`;
+    const readonlyClass = readonly || !canEdit() ? " readonly" : "";
+    return `
+      <td class="drop-slot${readonlyClass}"
+        data-class-id="${escapeHtml(slot.classId)}"
+        data-week="${slot.week}"
+        data-day="${slot.day}"
+        data-block-start="${slot.blockStart}">
+        ${body}
+      </td>
+    `;
+  }
+
+  function renderCourseCard(lesson, issueIds, options) {
+    const isConflict = issueIds.has(lesson.id);
+    const classes = ["course-card"];
+    if (lesson.isLocked) classes.push("locked");
+    if (isConflict) classes.push("conflict");
+    const draggable = options.draggable ? "true" : "false";
+    const title = options.showClass
+      ? `${global.DgConstraints.className(state.data, lesson.classId)}｜${lesson.subject}`
+      : lesson.subject;
+    return `
+      <article class="${classes.join(" ")}" draggable="${draggable}" data-lesson-id="${escapeHtml(lesson.id)}">
+        <div class="course-main">
+          <strong class="course-subject">${escapeHtml(title)}</strong>
+          ${lesson.isLocked ? `<span class="chip locked">鎖定</span>` : ""}
+        </div>
+        <div class="course-meta">
+          <span>${escapeHtml(global.DgConstraints.teacherName(state.data, lesson.teacherId))}</span>
+          <span>${escapeHtml(lesson.note || "")}</span>
+        </div>
+        <div class="chip-row">
+          <span class="chip room">${escapeHtml(lesson.roomType || "普通")}</span>
+          <span class="chip">${escapeHtml(lesson.source === "auto" ? "自動" : lesson.source === "pre" ? "預排" : "手動")}</span>
+        </div>
+      </article>
+    `;
+  }
+
+  function handleScheduleClick(event) {
+    if (!canEdit() || state.viewMode !== "class") return;
+    const slotEl = event.target.closest(".drop-slot");
+    if (!slotEl || slotEl.classList.contains("readonly")) return;
+    const slot = {
+      classId: slotEl.dataset.classId,
+      week: Number(slotEl.dataset.week),
+      day: Number(slotEl.dataset.day),
+      blockStart: Number(slotEl.dataset.blockStart),
+    };
+    const lesson = global.DgScheduler.occupiedAt(state.schedule, slot);
+    openEditor(slot, lesson);
+  }
+
+  function openEditor(slot, lesson) {
+    state.selectedSlot = { ...slot, lessonId: lesson?.id || "" };
+    els.editorSlotLabel.textContent = `${global.DgConstraints.className(state.data, slot.classId)}｜第 ${slot.week} 週 ${global.DgConstraints.dayLabel(slot.day)} ${global.DgConstraints.blockLabel(slot.blockStart)}`;
+    renderLessonSubjectOptions(slot.classId);
+    els.lessonSubject.value = lesson?.subject || els.lessonSubject.options[0]?.value || "";
+    updateLessonTeacherOptions(lesson?.teacherId);
+    els.lessonRoom.value = lesson?.roomType || roomForSubject(slot.classId, els.lessonSubject.value);
+    els.lessonLocked.checked = Boolean(lesson?.isLocked);
+    els.lessonNote.value = lesson?.note || "";
+    els.editorMessage.textContent = "";
+    els.editorPanel.classList.remove("hidden");
+  }
+
+  function closeEditor() {
+    state.selectedSlot = null;
+    els.editorPanel.classList.add("hidden");
+  }
+
+  function subjectsForClass(classId) {
+    const classInfo = (state.data.classes || []).find((item) => item.classId === classId);
+    if (!classInfo) return [];
+    const subjects = [];
+    (state.data.courseQuotas || [])
+      .filter((quota) => String(quota.grade) === String(classInfo.grade))
+      .forEach((quota) => {
+        if (quota.subject === "社會") {
+          subjects.push(...global.DgSocialAssignment.subjectsForClass(state.data.socialAssignments, classId));
+        } else {
+          subjects.push(quota.subject);
+        }
+      });
+    return Array.from(new Set(subjects));
+  }
+
+  function roomForSubject(classId, subject) {
+    const classInfo = (state.data.classes || []).find((item) => item.classId === classId);
+    const lookupSubject = global.DgConfig.socialSubjects.includes(subject) ? "社會" : subject;
+    return (
+      (state.data.courseQuotas || []).find(
+        (quota) => String(quota.grade) === String(classInfo?.grade) && quota.subject === lookupSubject
+      )?.roomType || "普通"
+    );
+  }
+
+  function assignedTeacherForClassSubject(classId, subject, ignoreLessonId) {
+    return (
+      (state.schedule || []).find(
+        (lesson) =>
+          lesson.id !== ignoreLessonId &&
+          String(lesson.classId) === String(classId) &&
+          lesson.subject === subject &&
+          lesson.teacherId
+      )?.teacherId || ""
+    );
+  }
+
+  function renderLessonSubjectOptions(classId) {
+    els.lessonSubject.innerHTML = subjectsForClass(classId)
+      .map((subject) => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
+      .join("");
+  }
+
+  function updateLessonTeacherOptions(preferredTeacherId) {
+    const subject = els.lessonSubject.value;
+    const classId = state.selectedSlot?.classId || state.selectedClassId;
+    const assignedTeacherId = assignedTeacherForClassSubject(classId, subject, state.selectedSlot?.lessonId);
+    let teachers = (state.data.teachers || []).filter(
+      (teacher) =>
+        (teacher.subjects || []).includes(subject) &&
+        global.DgConstraints.teacherCanTeachClass(teacher, classId)
+    );
+    if (assignedTeacherId) {
+      teachers = teachers.filter((teacher) => teacher.teacherId === assignedTeacherId);
+    }
+    els.lessonTeacher.innerHTML = teachers.length
+      ? teachers
+          .map((teacher) => `<option value="${escapeHtml(teacher.teacherId)}">${escapeHtml(teacher.teacherName)}</option>`)
+          .join("")
+      : `<option value="">沒有可用教師</option>`;
+    els.lessonTeacher.disabled = !teachers.length || Boolean(assignedTeacherId);
+    if (preferredTeacherId && teachers.some((teacher) => teacher.teacherId === preferredTeacherId)) {
+      els.lessonTeacher.value = preferredTeacherId;
+    }
+    if (assignedTeacherId && teachers.length) {
+      els.lessonTeacher.value = assignedTeacherId;
+    }
+    if (state.selectedSlot) {
+      els.lessonRoom.value = roomForSubject(state.selectedSlot.classId, subject);
+    }
+    els.lessonRoom.innerHTML = (state.data.rooms || [])
+      .map((room) => `<option value="${escapeHtml(room.roomType)}">${escapeHtml(room.roomType)}｜${escapeHtml(room.roomName)}</option>`)
+      .join("");
+    els.lessonRoom.value = roomForSubject(state.selectedSlot?.classId || state.selectedClassId, subject);
+  }
+
+  function handleLessonSubmit(event) {
+    event.preventDefault();
+    if (!state.selectedSlot) return;
+    if (!els.lessonTeacher.value) {
+      els.editorMessage.textContent = "沒有符合授課班級與科目的教師。";
+      return;
+    }
+    const result = global.DgScheduler.upsertLesson(
+      state.schedule,
+      {
+        id: state.selectedSlot.lessonId,
+        ...state.selectedSlot,
+        subject: els.lessonSubject.value,
+        teacherId: els.lessonTeacher.value,
+        roomType: els.lessonRoom.value,
+        isLocked: els.lessonLocked.checked,
+        note: els.lessonNote.value.trim(),
+      },
+      state.data
+    );
+    if (!result.ok) {
+      els.editorMessage.textContent = result.message;
+      return;
+    }
+    state.schedule = result.schedule;
+    refreshIssues();
+    closeEditor();
+    renderAll();
+    toast("已套用預排設定。");
+  }
+
+  function handleClearLesson() {
+    if (!state.selectedSlot) return;
+    const lesson = global.DgScheduler.occupiedAt(state.schedule, state.selectedSlot);
+    if (lesson?.isLocked) {
+      els.editorMessage.textContent = "此課程已鎖定，請先取消鎖定再清空。";
+      return;
+    }
+    state.schedule = global.DgScheduler.clearLesson(state.schedule, state.selectedSlot);
+    refreshIssues();
+    closeEditor();
+    renderAll();
+    toast("已清空此連堂區塊。");
+  }
+
+  function handleMoveLesson(lessonId, target) {
+    if (!canEdit()) return;
+    const result = global.DgScheduler.moveLesson(state.schedule, lessonId, target, state.data);
+    if (!result.ok) {
+      toast(result.message, "error");
+      return;
+    }
+    state.schedule = result.schedule;
+    refreshIssues();
+    renderAll();
+    toast("已完成拖拉調課。");
+  }
+
+  function handleAutoSchedule() {
+    if (!canEdit()) return;
+    const result = global.DgScheduler.autoSchedule(state.data, state.schedule);
+    state.schedule = result.schedule;
+    state.issues = result.issues;
+    closeEditor();
+    renderAll();
+    const message = result.unplaced.length
+      ? `自動排課完成，但有 ${result.unplaced.length} 個區塊未排入，請查看衝突檢查。`
+      : "自動排課完成。";
+    toast(message, result.unplaced.length ? "error" : "");
+  }
+
+  function renderSocialTable() {
+    const subjectOptions = (selected) =>
+      global.DgConfig.socialSubjects
+        .map((subject) => `<option value="${escapeHtml(subject)}" ${subject === selected ? "selected" : ""}>${escapeHtml(subject)}</option>`)
+        .join("");
+    const teacherOptions = (subject, selected, classId) =>
+      global.DgSocialAssignment.socialTeachers(state.data, subject, classId)
+        .map(
+          (teacher) =>
+            `<option value="${escapeHtml(teacher.teacherId)}" ${teacher.teacherId === selected ? "selected" : ""}>${escapeHtml(
+              teacher.teacherName
+            )}</option>`
+        )
+        .join("");
+
+    const rows = (state.data.classes || [])
+      .map((classInfo) => {
+        const row = global.DgSocialAssignment.assignmentForClass(state.data.socialAssignments, classInfo.classId) || {};
+        const disabled = canEdit() ? "" : "disabled";
+        return `
+          <tr data-class-id="${escapeHtml(classInfo.classId)}">
+            <td><strong>${escapeHtml(classInfo.className)}</strong></td>
+            <td>
+              <select data-social-field="mode" ${disabled}>
+                <option value="auto" ${row.mode !== "manual" ? "selected" : ""}>自動</option>
+                <option value="manual" ${row.mode === "manual" ? "selected" : ""}>手動</option>
+              </select>
+            </td>
+            <td><select data-social-field="subjectA" ${disabled}>${subjectOptions(row.subjectA)}</select></td>
+            <td><select data-social-field="teacherA" ${disabled}>${teacherOptions(row.subjectA, row.teacherA, classInfo.classId)}</select></td>
+            <td><select data-social-field="subjectB" ${disabled}>${subjectOptions(row.subjectB)}</select></td>
+            <td><select data-social-field="teacherB" ${disabled}>${teacherOptions(row.subjectB, row.teacherB, classInfo.classId)}</select></td>
+            <td>${escapeHtml(row.updatedAt ? new Date(row.updatedAt).toLocaleString("zh-TW") : "")}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    els.socialTable.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>班級</th>
+            <th>模式</th>
+            <th>科目 A</th>
+            <th>教師 A</th>
+            <th>科目 B</th>
+            <th>教師 B</th>
+            <th>更新時間</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  function handleSocialChange(event) {
+    if (!canEdit()) return;
+    const rowEl = event.target.closest("tr[data-class-id]");
+    if (!rowEl) return;
+    const classId = rowEl.dataset.classId;
+    const values = {};
+    rowEl.querySelectorAll("[data-social-field]").forEach((field) => {
+      values[field.dataset.socialField] = field.value;
+    });
+    const teacherAList = global.DgSocialAssignment.socialTeachers(state.data, values.subjectA, classId);
+    const teacherBList = global.DgSocialAssignment.socialTeachers(state.data, values.subjectB, classId);
+    if (!teacherAList.some((teacher) => teacher.teacherId === values.teacherA)) {
+      values.teacherA = teacherAList[0]?.teacherId || "";
+    }
+    if (!teacherBList.some((teacher) => teacher.teacherId === values.teacherB)) {
+      values.teacherB = teacherBList[0]?.teacherId || "";
+    }
+
+    state.data.classes = state.data.classes.map((classInfo) =>
+      classInfo.classId === classId ? { ...classInfo, socialMode: values.mode } : classInfo
+    );
+
+    if (values.mode === "manual") {
+      state.data.socialAssignments = global.DgSocialAssignment.setManual(
+        state.data.socialAssignments,
+        classId,
+        values.subjectA,
+        values.teacherA,
+        values.subjectB,
+        values.teacherB
+      );
+    } else {
+      state.data.socialAssignments = global.DgSocialAssignment.setAuto(state.data.socialAssignments, classId);
+      state.data.socialAssignments = global.DgSocialAssignment.autoAssign(state.data, true);
+    }
+    refreshIssues();
+    renderAll();
+    toast("社會科設定已更新。");
+  }
+
+  function renderConflicts() {
+    refreshIssues();
+    const recommendations = global.DgAiOptimizer.analyze(state.schedule, state.data);
+    const issueHtml = state.issues.length
+      ? state.issues
+          .map(
+            (issue) => `
+              <article class="conflict-item ${issue.level}">
+                <strong>${issue.level === "error" ? "硬性衝突" : "提醒"}｜${escapeHtml(issue.code)}</strong>
+                <span>${escapeHtml(issue.message)}</span>
+              </article>
+            `
+          )
+          .join("")
+      : `<article class="conflict-item"><strong>沒有發現衝突</strong><span>目前課表可儲存。</span></article>`;
+
+    const recommendationHtml = recommendations
+      .map(
+        (item) => `
+          <article class="conflict-item ${item.level === "error" ? "error" : item.level === "warning" ? "warning" : ""}">
+            <strong>最佳化建議｜${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.body)}</span>
+          </article>
+        `
+      )
+      .join("");
+    els.conflictList.innerHTML = issueHtml + recommendationHtml;
+  }
+
+  async function copyConflictText() {
+    refreshIssues();
+    const text = state.issues.length
+      ? state.issues.map((issue) => `[${issue.level}] ${issue.code} ${issue.message}`).join("\n")
+      : "沒有發現衝突。";
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("已複製檢查結果。");
+    } catch (error) {
+      toast("瀏覽器不允許直接複製，請改用手動選取。", "error");
+    }
+  }
+
+  async function handleCreateVersion(event) {
+    event.preventDefault();
+    refreshIssues();
+    if (hardIssues().length) {
+      state.activeView = "conflicts";
+      renderAll();
+      toast("仍有硬性衝突，暫不能儲存版本。", "error");
+      return;
+    }
+
+    const versionInput = {
+      versionName: els.versionName.value.trim() || `排課版本 ${new Date().toLocaleString("zh-TW")}`,
+      note: els.versionNote.value.trim(),
+      createdBy: state.currentUser?.userId || state.currentUser?.name || "",
+      schedule: state.schedule,
+    };
+    const version = global.DgVersion.createVersion(versionInput);
+    if (global.DgApi.hasRemote()) {
+      try {
+        await global.DgApi.createVersion(
+          {
+            versionId: version.versionId,
+            versionName: version.versionName,
+            createdBy: version.createdBy,
+            createdAt: version.createdAt,
+            note: version.note,
+            isActive: true,
+          },
+          state.schedule
+        );
+      } catch (error) {
+        toast(`本機版本已儲存，但寫入 GAS 失敗：${error.message}`, "error");
+      }
+    }
+    els.versionName.value = "";
+    els.versionNote.value = "";
+    renderAll();
+    toast("已建立課表版本。");
+  }
+
+  function renderVersions() {
+    const versions = global.DgVersion.listVersions();
+    els.versionList.innerHTML = versions.length
+      ? versions
+          .map(
+            (version) => `
+              <article class="version-item">
+                <strong>${escapeHtml(version.versionName)}${version.isActive ? "｜目前載入" : ""}</strong>
+                <p>${escapeHtml(new Date(version.createdAt).toLocaleString("zh-TW"))}　${escapeHtml(version.note || "")}</p>
+                <button type="button" data-version-load="${escapeHtml(version.versionId)}">載入</button>
+                <button type="button" data-version-delete="${escapeHtml(version.versionId)}">刪除</button>
+              </article>
+            `
+          )
+          .join("")
+      : `<article class="version-item"><strong>尚無版本</strong><p>排課通過檢查後即可建立版本。</p></article>`;
+
+    els.versionList.querySelectorAll("[data-version-load]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const version = global.DgVersion.loadVersion(button.dataset.versionLoad);
+        if (!version) return;
+        state.schedule = global.DgConfig.clone(version.schedule || []);
+        refreshIssues();
+        state.activeView = "schedule";
+        closeEditor();
+        renderAll();
+        toast("已載入課表版本。");
+      });
+    });
+    els.versionList.querySelectorAll("[data-version-delete]").forEach((button) => {
+      button.addEventListener("click", () => {
+        global.DgVersion.removeVersion(button.dataset.versionDelete);
+        renderAll();
+        toast("已刪除版本。");
+      });
+    });
+  }
+
+  async function handleSaveSettings(event) {
+    event.preventDefault();
+    global.DgConfig.setApiUrl(els.gasUrlInput.value);
+    renderApiState();
+    if (!global.DgApi.hasRemote()) {
+      toast("尚未填入 URL，會繼續使用示範資料。");
+      return;
+    }
+    try {
+      await loadData();
+      setupInitialState();
+      renderAll();
+      toast("已儲存並重新讀取 Google Sheets 資料。");
+    } catch (error) {
+      toast(`URL 已儲存，但讀取資料失敗：${error.message}`, "error");
+    }
+  }
+
+  function renderSettings() {
+    const cards = Object.entries(global.DgConfig.sheetSchemas)
+      .map(
+        ([name, fields]) => `
+          <article class="schema-card">
+            <strong>${escapeHtml(global.DgConfig.sheetLabels[name] || name)}</strong>
+            <small>試算表分頁：${escapeHtml(name)}</small>
+            <div class="field-list">
+              ${fields
+                .map(
+                  (field) => `
+                    <span class="field-pill">
+                      ${escapeHtml(global.DgConfig.fieldLabels[field] || field)}
+                      <em>${escapeHtml(field)}</em>
+                    </span>
+                  `
+                )
+                .join("")}
+            </div>
+          </article>
+        `
+      )
+      .join("");
+    els.schemaPreview.innerHTML = cards;
+  }
+
+  function printCurrentSchedule() {
+    state.printAllWeeks = true;
+    state.activeView = "schedule";
+    renderAll();
+    global.DgExporter.printSchedule();
+    setTimeout(() => {
+      state.printAllWeeks = false;
+      renderAll();
+    }, 700);
+  }
+
+  function handleExport(event) {
+    const action = event.currentTarget.dataset.export;
+    const className = global.DgConstraints.className(state.data, state.selectedClassId);
+    const teacherName = global.DgConstraints.teacherName(state.data, state.selectedTeacherId);
+    if (action === "classCsv") {
+      global.DgExporter.downloadCsv(`${className}-暑期課表.csv`, global.DgExporter.classRows(state.schedule, state.data, state.selectedClassId));
+    }
+    if (action === "teacherCsv") {
+      global.DgExporter.downloadCsv(`${teacherName}-暑期課表.csv`, global.DgExporter.teacherRows(state.schedule, state.data, state.selectedTeacherId));
+    }
+    if (action === "allCsv") {
+      global.DgExporter.downloadCsv("大觀國中暑期總課表.csv", global.DgExporter.allRows(state.schedule, state.data));
+    }
+    if (action === "classPrint") {
+      state.viewMode = "class";
+      printCurrentSchedule();
+    }
+    if (action === "teacherPrint") {
+      state.viewMode = "teacher";
+      printCurrentSchedule();
+    }
+  }
+
+  async function init() {
+    bindElements();
+    bindEvents();
+    await loadData();
+    state.currentUser = global.DgAuth.getSession();
+    if (state.currentUser) {
+      setupInitialState();
+      showApp();
+    } else {
+      showLogin();
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})(typeof window !== "undefined" ? window : globalThis);
