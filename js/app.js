@@ -87,6 +87,7 @@
       "loginPassword",
       "loginGasUrl",
       "loginMessage",
+      "buildState",
       "apiState",
       "currentUserLabel",
       "logoutButton",
@@ -293,6 +294,9 @@
 
   function renderApiState() {
     const hasApi = global.DgApi.hasRemote();
+    if (els.buildState) {
+      els.buildState.textContent = `版本 ${global.DgConfig.appBuild || "未知"}`;
+    }
     els.apiState.textContent = hasApi ? "已設定 GAS" : "尚未設定 GAS";
     els.apiState.className = `status-pill ${hasApi ? "ok" : "warning"}`;
     els.apiNotice.classList.toggle("hidden", hasApi);

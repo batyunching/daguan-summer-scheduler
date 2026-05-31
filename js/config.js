@@ -1,4 +1,6 @@
 (function (global) {
+  const APP_BUILD = "20260531-8";
+
   const DAYS = [
     { id: 1, label: "星期一", short: "一" },
     { id: 2, label: "星期二", short: "二" },
@@ -466,6 +468,7 @@
   }
 
   global.DgConfig = {
+    appBuild: APP_BUILD,
     appName: "大觀國中暑期排課系統",
     days: DAYS,
     blocks: BLOCKS,
