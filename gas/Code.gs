@@ -31,6 +31,7 @@ const SHEET_DEFINITIONS = {
       maxWeeklyPeriods: "每週節數上限",
       note: "備註",
       assignedClasses: "授課班級",
+      teacherPosition: "教師職位",
     },
   },
   Class_Settings: {

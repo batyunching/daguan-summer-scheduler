@@ -57,6 +57,8 @@ https://script.google.com/macros/s/你的部署ID/exec?action=initializeSheets
 
 正式上線建議改用 Google OAuth 或學校既有登入機制。
 
+`教師設定` 會包含「教師職位」欄位，可填 `組長`、`導師`、`專任`。若舊表尚未出現此欄，請更新 `Code.gs` 後執行 `action=initializeSheets&forceHeaders=true` 或 `action=localizeHeaders`，再於最後一欄填入職位。
+
 ## 已經建立過英文表頭怎麼辦
 
 如果你先前已用舊版程式建立過分頁，分頁名稱可能已經是中文，但第 1 列表頭仍是英文。請更新 Apps Script 的 `Code.gs` 後，在瀏覽器執行：
