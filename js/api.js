@@ -56,9 +56,17 @@
   function splitList(value) {
     if (Array.isArray(value)) return value;
     return String(value || "")
-      .split(/[,\u3001]/)
+      .split(/[,\u3001;；\s]+/)
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  function splitClassList(value) {
+    const items = splitList(value).map(asText).filter(Boolean);
+    if (items.length === 1 && /^\d{6,}$/.test(items[0]) && items[0].length % 3 === 0) {
+      return items[0].match(/\d{3}/g) || items;
+    }
+    return items;
   }
 
   function parseBool(value) {
@@ -109,7 +117,7 @@
       teacherName: asText(row.teacherName),
       subjectGroup: asText(row.subjectGroup),
       subjects: splitList(row.subjects),
-      assignedClasses: splitList(row.assignedClasses).map(asText).filter(Boolean),
+      assignedClasses: splitClassList(row.assignedClasses),
       availableWeeks: splitList(row.availableWeeks).map((week) => parseNumber(week, 0)).filter(Boolean),
       maxWeeklyPeriods: parseNumber(row.maxWeeklyPeriods, 20),
     }));

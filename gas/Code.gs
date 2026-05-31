@@ -292,7 +292,7 @@ function readTable_(sheetIdOrName) {
     return [];
   }
 
-  const values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  const values = sheet.getRange(1, 1, lastRow, lastCol).getDisplayValues();
   const headers = values.shift().map((header) => FIELD_TO_KEY[String(header)] || String(header));
   return values
     .filter((row) => row.some((cell) => cell !== ""))
