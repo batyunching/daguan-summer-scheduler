@@ -1,4 +1,6 @@
 (function (global) {
+  const TEACHER_WEEKLY_WARNING_PERIODS = 12;
+
   function indexBy(items, key) {
     return Object.fromEntries((items || []).map((item) => [item[key], item]));
   }
@@ -51,6 +53,7 @@
       message,
       lessonIds: lessonIds || [],
       detail: detail || "",
+      suggestion: detail || "",
     });
   }
 
@@ -70,6 +73,60 @@
     );
   }
 
+  function teachersForSubject(data, subject, classId, week) {
+    return (data.teachers || []).filter((teacher) => {
+      const canTeachSubject = (teacher.subjects || []).includes(subject);
+      const canTeachClass = teacherCanTeachClass(teacher, classId);
+      const canTeachWeek = !week || (teacher.availableWeeks || []).map(Number).includes(Number(week));
+      return canTeachSubject && canTeachClass && canTeachWeek;
+    });
+  }
+
+  function teacherNames(teachers) {
+    return teachers.map((teacher) => teacher.teacherName || teacher.teacherId).filter(Boolean).join("、");
+  }
+
+  function quotaSuggestion(data, classInfo, quota, actual) {
+    const target = Number(quota.targetPeriods);
+    const diff = target - actual;
+    const subject = quota.subject;
+    const classLabel = classInfo.className || classInfo.classId;
+    const candidateNames = teacherNames(teachersForSubject(data, subject, classInfo.classId));
+
+    if (diff > 0) {
+      const blocks = Math.ceil(diff / 2);
+      const teacherText = candidateNames
+        ? `可優先安排給：${candidateNames}。`
+        : "目前沒有符合科目與授課班級的教師，請先到「教師設定」檢查可授科目、可授課週次、授課班級。";
+      return `建議補排 ${blocks} 個連堂區塊（${diff} 節）到 ${classLabel}「${subject}」。${teacherText}`;
+    }
+
+    if (diff < 0) {
+      const blocks = Math.ceil(Math.abs(diff) / 2);
+      return `建議從 ${classLabel}「${subject}」移除或改排 ${blocks} 個連堂區塊（多出 ${Math.abs(diff)} 節），再把空出的時段補給缺節科目。`;
+    }
+
+    return "";
+  }
+
+  function teacherWeeklyLoadSuggestion(data, teacher, week, lessons, periods) {
+    const subjectNames = Array.from(new Set((lessons || []).map((lesson) => lesson.subject).filter(Boolean)));
+    const subjectText = subjectNames.length ? `本週主要科目：${subjectNames.join("、")}。` : "";
+    const alternativeNames = new Set();
+
+    (lessons || []).forEach((lesson) => {
+      teachersForSubject(data, lesson.subject, lesson.classId, week)
+        .filter((candidate) => candidate.teacherId !== teacher.teacherId)
+        .forEach((candidate) => alternativeNames.add(candidate.teacherName || candidate.teacherId));
+    });
+
+    const alternativeText = alternativeNames.size
+      ? `可檢查是否能將部分「班級＋科目」整組改派給：${Array.from(alternativeNames).slice(0, 4).join("、")}。`
+      : "目前沒有明顯可替代的同科教師。";
+
+    return `建議將 ${teacher.teacherName} 第 ${week} 週課程由 ${periods} 節降到 ${TEACHER_WEEKLY_WARNING_PERIODS} 節以內。${subjectText}可先把部分課程移到其他可授課週次；${alternativeText}若現有教師都無法支援，建議請主任徵詢是否增加該科授課老師或協調支援教師。`;
+  }
+
   function validateSchedule(schedule, data, options) {
     const settings = {
       includeWarnings: true,
@@ -85,6 +142,7 @@
     const roomSlots = new Map();
     const classDaySubjects = new Map();
     const classSubjectTeachers = new Map();
+    const teacherWeekLoads = new Map();
     const quotaCounts = new Map();
 
     (schedule || []).forEach((lesson) => {
@@ -170,6 +228,11 @@
         const sameTeacherSlot = teacherSlots.get(tKey) || [];
         sameTeacherSlot.push(lesson);
         teacherSlots.set(tKey, sameTeacherSlot);
+
+        const teacherWeekKey = [lesson.teacherId, week].join("|");
+        const sameTeacherWeek = teacherWeekLoads.get(teacherWeekKey) || [];
+        sameTeacherWeek.push(lesson);
+        teacherWeekLoads.set(teacherWeekKey, sameTeacherWeek);
       }
 
       if (lesson.roomType) {
@@ -218,6 +281,23 @@
             .map((item) => className(data, item.classId))
             .join("、")}。`,
           lessons.map((item) => item.id)
+        );
+      }
+    });
+
+    teacherWeekLoads.forEach((lessons) => {
+      const teacherId = lessons[0].teacherId;
+      const week = Number(lessons[0].week);
+      const teacherInfo = teachers[teacherId];
+      const periods = lessons.length * 2;
+      if (teacherInfo && periods > TEACHER_WEEKLY_WARNING_PERIODS) {
+        pushIssue(
+          issues,
+          "warning",
+          "TEACHER_WEEKLY_LOAD_OVER_12",
+          `${teacherName(data, teacherId)} 第 ${week} 週目前已排 ${periods} 節，超過每週 ${TEACHER_WEEKLY_WARNING_PERIODS} 節建議上限。`,
+          lessons.map((item) => item.id),
+          teacherWeeklyLoadSuggestion(data, teacherInfo, week, lessons, periods)
         );
       }
     });
@@ -275,7 +355,8 @@
               "warning",
               "QUOTA_MISMATCH",
               `${classInfo.className}「${quota.subject}」目前 ${actual} 節，目標 ${quota.targetPeriods} 節。`,
-              []
+              [],
+              quotaSuggestion(data, classInfo, quota, actual)
             );
           }
         });
