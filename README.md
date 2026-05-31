@@ -21,6 +21,8 @@
 
 直接開啟 `index.html` 即可測試示範資料。部署到 GitHub Pages 時，將整個資料夾推到 repository，並啟用 Pages。
 
+若上傳 GitHub Pages 後看不到右上角「版本 20260531-8」，代表 Pages 仍讀到舊版 `index.html` 或檔案沒有覆蓋到正確位置。請確認 `index.html` 在 repository 根目錄，`js/app.js`、`js/constraints.js`、`js/scheduler.js` 在 `js` 資料夾內，再等 GitHub Pages 完成部署後強制重新整理。
+
 示範帳號：
 
 | 角色 | Email | 密碼 |
