@@ -14,14 +14,14 @@
 - 社會科自動 / 手動安排。
 - 版本歷史，本機可儲存與載入；設定 GAS 後可寫入 Sheets。
 - 班級、教師、總課表 CSV 匯出；PDF 可用瀏覽器列印。
-- 班級 / 教師 PDF 輸出會列出 5 個週次，並顯示週次日期，例如 `第 1 週 7/13~7/17`。
+- 班級 / 教師課表可選單週或一次檢視全部週次；PDF 輸出會列出 5 個週次，並顯示週次日期，例如 `第 1 週 7/13~7/17`。
 - 規則式最佳化建議，預留後續 AI API 串接位置。
 
 ## 快速使用
 
 直接開啟 `index.html` 即可測試示範資料。部署到 GitHub Pages 時，將整個資料夾推到 repository，並啟用 Pages。
 
-若上傳 GitHub Pages 後看不到右上角「版本 20260531-10」，代表 Pages 仍讀到舊版 `index.html` 或檔案沒有覆蓋到正確位置。請確認 `index.html` 在 repository 根目錄，`js/app.js`、`js/constraints.js`、`js/scheduler.js` 在 `js` 資料夾內，再等 GitHub Pages 完成部署後強制重新整理。
+若上傳 GitHub Pages 後看不到右上角「版本 20260531-11」，代表 Pages 仍讀到舊版 `index.html` 或檔案沒有覆蓋到正確位置。請確認 `index.html` 在 repository 根目錄，`js/app.js`、`js/constraints.js`、`js/scheduler.js` 在 `js` 資料夾內，再等 GitHub Pages 完成部署後強制重新整理。
 
 示範帳號：
 
