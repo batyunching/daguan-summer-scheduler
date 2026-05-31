@@ -253,6 +253,11 @@ h2 {
   background: var(--primary-soft);
 }
 
+.status-pill.build-pill {
+  color: #34515a;
+  background: #eef4f6;
+}
+
 .user-label {
   color: var(--muted);
   font-size: 0.9rem;
@@ -712,6 +717,13 @@ h2 {
 .version-item strong {
   display: block;
   margin-bottom: 4px;
+}
+
+.issue-suggestion {
+  display: block;
+  margin-top: 8px;
+  color: var(--primary-dark);
+  font-weight: 700;
 }
 
 .inline-form,
