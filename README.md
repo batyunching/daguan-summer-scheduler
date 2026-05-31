@@ -30,10 +30,14 @@
 
 ## 連接 Google Sheets
 
+目前系統已內建大觀國中使用的 GAS Web App URL，登入時只需要輸入 Email 與密碼。
+
+若未來要更換 GAS：
+
 1. 依照 `gas/README_GAS_DEPLOY.md` 建立 Google Sheets 與部署 Apps Script Web App。
 2. 打開系統後進入「資料設定」。
-3. 貼上 GAS Web App URL 並儲存。
-4. 系統會重新讀取 Sheets 資料；若 URL 空白，會清楚顯示目前使用示範資料。
+3. 貼上新的 GAS Web App URL 並儲存。
+4. 系統會重新讀取 Sheets 資料。
 
 GAS 的 `initializeSheets` 會建立繁體中文分頁與中文表頭，例如「使用者帳號」「教師設定」「班級設定」。前端會自動把中文表頭對應回程式欄位。
 

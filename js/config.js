@@ -388,6 +388,8 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  const DEFAULT_API_URL =
+    "https://script.google.com/macros/s/AKfycbxl-MIvMZ2tJkg0Xm86MAfSfBuCnoscoQpIXTYReNaIzhvx8JUTzF7O360V_Wsu44OI/exec";
   const memoryStore = {};
 
   const safeStorage = {
@@ -415,7 +417,7 @@
   };
 
   function getApiUrl() {
-    return safeStorage.getItem("daguanGasApiUrl") || "";
+    return safeStorage.getItem("daguanGasApiUrl") || DEFAULT_API_URL;
   }
 
   function setApiUrl(url) {
