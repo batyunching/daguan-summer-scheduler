@@ -8,9 +8,17 @@
     return map;
   }
 
+  function teacherPosition(teacher) {
+    const text = String(teacher?.teacherPosition || "").trim();
+    if (text === "組長" || text === "導師" || text === "專任") return text;
+    return "專任";
+  }
+
   function scorePlacement(schedule, candidate, data) {
     let score = 0;
     const load = teacherLoadMap(schedule);
+    const teacher = (data.teachers || []).find((item) => item.teacherId === candidate.teacherId);
+    const shouldPreferFullDay = teacherPosition(teacher) !== "組長";
     const sameTeacherDay = schedule.filter(
       (lesson) =>
         lesson.teacherId === candidate.teacherId &&
@@ -35,7 +43,7 @@
     score += (load[candidate.teacherId] || 0) * 0.6;
     score += sameRoomSlot.length * 2;
     score += sameClassDaySubject.length * 12;
-    if (sameTeacherDay.length > 0) score -= 3;
+    if (sameTeacherDay.length > 0 && shouldPreferFullDay) score -= 9;
 
     const blockPreference = Number(candidate.blockStart) === 1 ? 0.2 : 0.4;
     score += blockPreference;

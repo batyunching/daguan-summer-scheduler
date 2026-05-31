@@ -326,6 +326,7 @@
       .filter((slot) => !task.week || Number(slot.week) === Number(task.week))
       .forEach((slot) => {
       if (occupiedAt(schedule, slot)) return;
+      if (sameClassSubjectDay(schedule, task.classId, slot.week, slot.day, task.subject)) return;
       const teacherId = chooseTeacher(data, task.classId, task.subject, slot.week, schedule, task.fixedTeacherId || task.preferredTeacherId);
       if (!teacherId) return;
       const candidate = normalizeLesson(
@@ -380,6 +381,9 @@
         );
         if (!teacherForTask) continue;
 
+        const next = schedule.filter((lesson) => lesson.id !== lessonToMove.id);
+        if (sameClassSubjectDay(next, task.classId, sourceSlot.week, sourceSlot.day, task.subject)) continue;
+
         const movedLesson = {
           ...lessonToMove,
           ...emptySlot,
@@ -396,7 +400,6 @@
           },
           "auto"
         );
-        const next = schedule.filter((lesson) => lesson.id !== lessonToMove.id);
         next.push(movedLesson, insertedLesson);
         if (!global.DgConstraints.getHardErrors(next, data).length) {
           return next;

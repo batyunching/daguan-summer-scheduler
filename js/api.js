@@ -82,6 +82,14 @@
     return text;
   }
 
+  function normalizeTeacherPosition(value) {
+    const text = String(value || "").trim();
+    if (text === "組長") return "組長";
+    if (text === "導師") return "導師";
+    if (text === "專任") return "專任";
+    return "專任";
+  }
+
   function parseNumber(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
@@ -118,6 +126,7 @@
       subjectGroup: asText(row.subjectGroup),
       subjects: splitList(row.subjects),
       assignedClasses: splitClassList(row.assignedClasses),
+      teacherPosition: normalizeTeacherPosition(row.teacherPosition),
       availableWeeks: splitList(row.availableWeeks).map((week) => parseNumber(week, 0)).filter(Boolean),
       maxWeeklyPeriods: parseNumber(row.maxWeeklyPeriods, 20),
     }));
