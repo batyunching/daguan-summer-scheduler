@@ -42,6 +42,24 @@
     return score;
   }
 
+  function subjectsForTeacher(schedule, teacherId) {
+    return Array.from(
+      new Set((schedule || []).filter((lesson) => lesson.teacherId === teacherId).map((lesson) => lesson.subject).filter(Boolean))
+    );
+  }
+
+  function alternateTeacherNames(data, teacher, subjects) {
+    return (data.teachers || [])
+      .filter(
+        (candidate) =>
+          candidate.teacherId !== teacher.teacherId &&
+          subjects.some((subject) => (candidate.subjects || []).includes(subject))
+      )
+      .map((candidate) => `${(candidate.subjectGroup || (candidate.subjects || []).join("、") || "未指定科目")}老師 ${candidate.teacherName || candidate.teacherId}`)
+      .slice(0, 3)
+      .join("、");
+  }
+
   function analyze(schedule, data) {
     const recommendations = [];
     const load = teacherLoadMap(schedule);
@@ -52,10 +70,17 @@
     teachers.forEach((teacher) => {
       const actual = load[teacher.teacherId] || 0;
       if (actual > avg + 8) {
+        const subjects = subjectsForTeacher(schedule, teacher.teacherId);
+        const alternatives = alternateTeacherNames(data, teacher, subjects);
+        const subjectText = subjects.length ? `主要集中在「${subjects.join("、")}」。` : "";
+        const alternativeText = alternatives
+          ? `可優先檢查是否能把部分同科課程改給 ${alternatives}。`
+          : "目前找不到明顯的同科替代教師，請檢查教師設定是否有其他老師可授此科與班級。";
+        const teacherLabel = `${(subjects.join("、") || teacher.subjectGroup || "未指定科目")}老師 ${teacher.teacherName}`;
         recommendations.push({
           level: "warning",
-          title: `${teacher.teacherName} 授課負荷偏高`,
-          body: `目前已排 ${actual} 節，平均約 ${Math.round(avg)} 節。可優先把同科目課程移給負荷較低的教師。`,
+          title: `${teacherLabel} 授課負荷偏高`,
+          body: `目前已排 ${actual} 節，平均約 ${Math.round(avg)} 節。${subjectText}${alternativeText}`,
         });
       }
     });

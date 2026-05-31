@@ -406,6 +406,113 @@
     return null;
   }
 
+  function teacherLabel(teacher, subject) {
+    const subjectText = subject || teacher?.subjectGroup || (teacher?.subjects || []).join("、") || "未指定科目";
+    const name = teacher?.teacherName || teacher?.teacherId || "未指定教師";
+    return `${subjectText}老師 ${name}`;
+  }
+
+  function explainUnplacedTask(task, schedule, data) {
+    const classInfo = (data.classes || []).find((item) => String(item.classId) === String(task.classId));
+    if (!classInfo) return `找不到班級 ${task.classId}，請檢查「班級設定」。`;
+
+    const classLabel = classInfo.className || classInfo.classId;
+    const slots = allSlotsForClass(classInfo).filter((slot) => !task.week || Number(slot.week) === Number(task.week));
+    const emptySlots = slots.filter((slot) => !occupiedAt(schedule, slot));
+    if (!emptySlots.length) {
+      return `${classLabel} 第 ${task.week || "指定"} 週已沒有空白連堂區塊，需先移動或移除其他課程。`;
+    }
+
+    const subjectTeachers = (data.teachers || []).filter((teacher) => (teacher.subjects || []).includes(task.subject));
+    if (!subjectTeachers.length) return `「${task.subject}」沒有設定可授課教師。`;
+
+    const classTeachers = subjectTeachers.filter((teacher) => teacherCanTeachClass(teacher, task.classId));
+    if (!classTeachers.length) {
+      return `「${task.subject}」教師未設定可授課 ${classLabel}，請檢查教師設定的「授課班級」。`;
+    }
+
+    const preferredId = task.fixedTeacherId || task.preferredTeacherId || "";
+    const candidateTeachers = preferredId
+      ? classTeachers.filter((teacher) => teacher.teacherId === preferredId)
+      : classTeachers;
+    if (preferredId && !candidateTeachers.length) {
+      return `${classLabel}「${task.subject}」已指定 ${preferredId}，但該教師不符合科目或授課班級設定。`;
+    }
+
+    const emptyWeeks = Array.from(new Set(emptySlots.map((slot) => Number(slot.week)))).sort((a, b) => a - b);
+    const weekTeachers = candidateTeachers.filter((teacher) =>
+      emptyWeeks.some((week) => (teacher.availableWeeks || []).map(Number).includes(week))
+    );
+    if (!weekTeachers.length) {
+      return `剩餘空白區塊在第 ${emptyWeeks.join("、")} 週，但「${task.subject}」教師的可授課週次不符合。`;
+    }
+
+    let occupiedByTeacher = 0;
+    let blockedBySameSubjectDay = 0;
+    let hardErrorSample = "";
+    for (const slot of emptySlots) {
+      for (const teacher of weekTeachers) {
+        if (!(teacher.availableWeeks || []).map(Number).includes(Number(slot.week))) continue;
+        if (teacherBusyAtSlot(schedule, teacher.teacherId, slot)) {
+          occupiedByTeacher += 1;
+          continue;
+        }
+        if (sameClassSubjectDay(schedule, task.classId, slot.week, slot.day, task.subject)) {
+          blockedBySameSubjectDay += 1;
+          continue;
+        }
+
+        const candidate = normalizeLesson(
+          {
+            ...slot,
+            subject: task.subject,
+            teacherId: teacher.teacherId,
+            roomType: task.roomType,
+            source: "auto",
+            isLocked: false,
+          },
+          "auto"
+        );
+        const hardErrors = global.DgConstraints.getHardErrors([...schedule, candidate], data);
+        if (!hardErrors.length) {
+          return `仍可嘗試手動補排：${classLabel} ${formatSlot(slot)}「${task.subject}」，教師可先考慮 ${teacherLabel(
+            teacher,
+            task.subject
+          )}。`;
+        }
+        hardErrorSample = hardErrors[0]?.message || hardErrorSample;
+      }
+    }
+
+    if (occupiedByTeacher) return `可授課教師在剩餘空白時段多數已被其他班使用，請嘗試換週次、換時段或增加同科授課老師。`;
+    if (blockedBySameSubjectDay) return `${classLabel} 剩餘空白日期多半已排過「${task.subject}」連堂，需避免同一天同科連上 4 節。`;
+    return hardErrorSample || `排課器找不到符合所有限制的時段，請檢查教師週次、授課班級、場地容量與鎖定課程。`;
+  }
+
+  function teacherBusyAtSlot(schedule, teacherId, slot) {
+    return (schedule || []).some(
+      (lesson) =>
+        lesson.teacherId === teacherId &&
+        Number(lesson.week) === Number(slot.week) &&
+        Number(lesson.day) === Number(slot.day) &&
+        Number(lesson.blockStart) === Number(slot.blockStart)
+    );
+  }
+
+  function sameClassSubjectDay(schedule, classId, week, day, subject) {
+    return (schedule || []).some(
+      (lesson) =>
+        String(lesson.classId) === String(classId) &&
+        Number(lesson.week) === Number(week) &&
+        Number(lesson.day) === Number(day) &&
+        lesson.subject === subject
+    );
+  }
+
+  function formatSlot(slot) {
+    return `第 ${slot.week} 週 ${global.DgConstraints.dayLabel(slot.day)} ${global.DgConstraints.blockLabel(slot.blockStart)}`;
+  }
+
   function autoSchedule(data, existingSchedule) {
     const schedule = preservedLessons(existingSchedule, data);
     const tasks = buildTasks(data, schedule);
@@ -420,7 +527,7 @@
         if (repaired) {
           schedule.splice(0, schedule.length, ...repaired);
         } else {
-          unplaced.push(task);
+          unplaced.push({ ...task, reason: explainUnplacedTask(task, schedule, data) });
         }
       }
     });

@@ -29,6 +29,23 @@
     return findTeacher(data, teacherId)?.teacherName || teacherId || "未指定教師";
   }
 
+  function teacherSubjectLabel(teacher, subjects) {
+    const subjectList = Array.from(new Set((subjects || []).filter(Boolean)));
+    const subjectText =
+      subjectList.join("、") || teacher?.subjectGroup || (teacher?.subjects || []).join("、") || "未指定科目";
+    const name = teacher?.teacherName || teacher?.teacherId || "未指定教師";
+    return `${subjectText}老師 ${name}`;
+  }
+
+  function teacherLabel(data, teacherId, subjectHint) {
+    return teacherSubjectLabel(findTeacher(data, teacherId), subjectHint ? [subjectHint] : []);
+  }
+
+  function teacherLabelForLessons(data, teacherId, lessons) {
+    const subjects = Array.from(new Set((lessons || []).map((lesson) => lesson.subject).filter(Boolean)));
+    return teacherSubjectLabel(findTeacher(data, teacherId), subjects);
+  }
+
   function className(data, classId) {
     return findClass(data, classId)?.className || classId || "未指定班級";
   }
@@ -83,22 +100,172 @@
   }
 
   function teacherNames(teachers) {
-    return teachers.map((teacher) => teacher.teacherName || teacher.teacherId).filter(Boolean).join("、");
+    return teachers.map((teacher) => teacherSubjectLabel(teacher)).filter(Boolean).join("、");
   }
 
-  function quotaSuggestion(data, classInfo, quota, actual) {
+  function getGradeWeeks(classInfo) {
+    return global.DgConfig.gradeSettings[String(classInfo.grade)]?.weeks || 3;
+  }
+
+  function allSlotsForClass(classInfo) {
+    const slots = [];
+    const weeks = getGradeWeeks(classInfo);
+    for (let week = 1; week <= weeks; week += 1) {
+      global.DgConfig.days.forEach((day) => {
+        global.DgConfig.blocks.forEach((block) => {
+          slots.push({ classId: classInfo.classId, week, day: day.id, blockStart: block.start });
+        });
+      });
+    }
+    return slots;
+  }
+
+  function lessonMatchesSlot(lesson, slot) {
+    return (
+      String(lesson.classId) === String(slot.classId) &&
+      Number(lesson.week) === Number(slot.week) &&
+      Number(lesson.day) === Number(slot.day) &&
+      Number(lesson.blockStart || lesson.slotStart || lesson.period) === Number(slot.blockStart)
+    );
+  }
+
+  function occupiedAt(schedule, slot) {
+    return (schedule || []).find((lesson) => lessonMatchesSlot(lesson, slot));
+  }
+
+  function teacherBusyAt(schedule, teacherId, slot) {
+    return (schedule || []).some(
+      (lesson) =>
+        lesson.teacherId === teacherId &&
+        Number(lesson.week) === Number(slot.week) &&
+        Number(lesson.day) === Number(slot.day) &&
+        Number(lesson.blockStart || lesson.slotStart || lesson.period) === Number(slot.blockStart)
+    );
+  }
+
+  function sameSubjectOnDay(schedule, slot, subject) {
+    return (schedule || []).some(
+      (lesson) =>
+        String(lesson.classId) === String(slot.classId) &&
+        Number(lesson.week) === Number(slot.week) &&
+        Number(lesson.day) === Number(slot.day) &&
+        lesson.subject === subject
+    );
+  }
+
+  function assignedTeacherForClassSubject(schedule, classId, subject) {
+    return (
+      (schedule || []).find(
+        (lesson) =>
+          String(lesson.classId) === String(classId) &&
+          lesson.subject === subject &&
+          lesson.teacherId
+      )?.teacherId || ""
+    );
+  }
+
+  function quotaSubjectOptions(data, classInfo, quota) {
+    if (!global.DgConfig.socialSubjects.includes(quota.subject) && quota.subject !== "社會") return [quota.subject];
+    const assigned = getSocialSubjectsForClass(data.socialAssignments, classInfo.classId);
+    return assigned.length ? assigned : global.DgConfig.socialSubjects;
+  }
+
+  function diagnoseSubjectPlacement(data, schedule, classInfo, subject, emptySlots) {
+    const classLabel = classInfo.className || classInfo.classId;
+    if (!emptySlots.length) return `「${subject}」暫無可嘗試的空白時段，需先空出連堂區塊。`;
+    const subjectTeachers = (data.teachers || []).filter((teacher) => (teacher.subjects || []).includes(subject));
+    if (!subjectTeachers.length) return `「${subject}」沒有設定可授課教師。`;
+
+    const classTeachers = subjectTeachers.filter((teacher) => teacherCanTeachClass(teacher, classInfo.classId));
+    if (!classTeachers.length) {
+      return `「${subject}」教師目前未設定可授課 ${classLabel}，請檢查教師設定的「授課班級」。`;
+    }
+
+    const assignedTeacherId = assignedTeacherForClassSubject(schedule, classInfo.classId, subject);
+    const candidateTeachers = assignedTeacherId
+      ? classTeachers.filter((teacher) => teacher.teacherId === assignedTeacherId)
+      : classTeachers;
+
+    if (assignedTeacherId && !candidateTeachers.length) {
+      return `${classLabel}「${subject}」已被同科同班規則綁定給 ${teacherLabel(
+        data,
+        assignedTeacherId,
+        subject
+      )}，但該教師不符合目前授課班級設定。`;
+    }
+
+    const emptyWeeks = Array.from(new Set(emptySlots.map((slot) => Number(slot.week)))).sort((a, b) => a - b);
+    const weekTeachers = candidateTeachers.filter((teacher) =>
+      emptyWeeks.some((week) => (teacher.availableWeeks || []).map(Number).includes(week))
+    );
+    if (!weekTeachers.length) {
+      return `剩餘空白區塊在第 ${emptyWeeks.join("、")} 週，但「${subject}」可用教師的可授課週次不符合。`;
+    }
+
+    const viable = [];
+    emptySlots.forEach((slot) => {
+      weekTeachers.forEach((teacher) => {
+        const availableWeek = (teacher.availableWeeks || []).map(Number).includes(Number(slot.week));
+        if (!availableWeek) return;
+        if (teacherBusyAt(schedule, teacher.teacherId, slot)) return;
+        if (sameSubjectOnDay(schedule, slot, subject)) return;
+        viable.push({ slot, teacher });
+      });
+    });
+
+    if (!viable.length) {
+      return `「${subject}」可用教師在剩餘空白時段已被其他班使用，或 ${classLabel} 當天已排過同科連堂。`;
+    }
+
+    const sample = viable[0];
+    return `可嘗試在 ${formatSlot(sample.slot)} 補入「${subject}」，教師可先考慮 ${teacherSubjectLabel(sample.teacher, [
+      subject,
+    ])}。`;
+  }
+
+  function quotaPlacementDiagnosis(data, schedule, classInfo, quota, diff) {
+    const missingBlocks = Math.ceil(diff / 2);
+    const emptySlots = allSlotsForClass(classInfo).filter((slot) => !occupiedAt(schedule, slot));
+    const reasons = [];
+
+    if (!emptySlots.length) {
+      reasons.push("班級課表已沒有空白連堂區塊，需要先移動或移除其他課程。");
+    } else if (emptySlots.length < missingBlocks) {
+      reasons.push(`還需要 ${missingBlocks} 個連堂區塊，但目前只剩 ${emptySlots.length} 個空白區塊。`);
+    }
+
+    quotaSubjectOptions(data, classInfo, quota).forEach((subject) => {
+      reasons.push(diagnoseSubjectPlacement(data, schedule, classInfo, subject, emptySlots));
+    });
+
+    return reasons.filter(Boolean).join(" ");
+  }
+
+  function quotaSuggestion(data, schedule, classInfo, quota, actual) {
     const target = Number(quota.targetPeriods);
     const diff = target - actual;
     const subject = quota.subject;
     const classLabel = classInfo.className || classInfo.classId;
-    const candidateNames = teacherNames(teachersForSubject(data, subject, classInfo.classId));
+    const candidateMap = new Map();
+    quotaSubjectOptions(data, classInfo, quota).forEach((subjectOption) => {
+      teachersForSubject(data, subjectOption, classInfo.classId).forEach((teacher) => {
+        candidateMap.set(teacher.teacherId, teacher);
+      });
+    });
+    const candidateNames = teacherNames(Array.from(candidateMap.values()));
 
     if (diff > 0) {
       const blocks = Math.ceil(diff / 2);
       const teacherText = candidateNames
         ? `可優先安排給：${candidateNames}。`
         : "目前沒有符合科目與授課班級的教師，請先到「教師設定」檢查可授科目、可授課週次、授課班級。";
-      return `建議補排 ${blocks} 個連堂區塊（${diff} 節）到 ${classLabel}「${subject}」。${teacherText}`;
+      return `建議補排 ${blocks} 個連堂區塊（${diff} 節）到 ${classLabel}「${subject}」。${teacherText}原因判斷：${quotaPlacementDiagnosis(
+        data,
+        schedule,
+        classInfo,
+        quota,
+        diff
+      )}`;
     }
 
     if (diff < 0) {
@@ -117,14 +284,17 @@
     (lessons || []).forEach((lesson) => {
       teachersForSubject(data, lesson.subject, lesson.classId, week)
         .filter((candidate) => candidate.teacherId !== teacher.teacherId)
-        .forEach((candidate) => alternativeNames.add(candidate.teacherName || candidate.teacherId));
+        .forEach((candidate) => alternativeNames.add(teacherSubjectLabel(candidate, [lesson.subject])));
     });
 
     const alternativeText = alternativeNames.size
       ? `可檢查是否能將部分「班級＋科目」整組改派給：${Array.from(alternativeNames).slice(0, 4).join("、")}。`
       : "目前沒有明顯可替代的同科教師。";
 
-    return `建議將 ${teacher.teacherName} 第 ${week} 週課程由 ${periods} 節降到 ${TEACHER_WEEKLY_WARNING_PERIODS} 節以內。${subjectText}可先把部分課程移到其他可授課週次；${alternativeText}若現有教師都無法支援，建議請主任徵詢是否增加該科授課老師或協調支援教師。`;
+    return `建議將 ${teacherSubjectLabel(
+      teacher,
+      subjectNames
+    )} 第 ${week} 週課程由 ${periods} 節降到 ${TEACHER_WEEKLY_WARNING_PERIODS} 節以內。${subjectText}可先把部分課程移到其他可授課週次；${alternativeText}若現有教師都無法支援，建議請主任徵詢是否增加該科授課老師或協調支援教師。`;
   }
 
   function validateSchedule(schedule, data, options) {
@@ -180,7 +350,7 @@
           issues,
           "error",
           "TEACHER_WEEK_LIMIT",
-          `${teacherInfo.teacherName} 不在第 ${week} 週可授課名單中。`,
+          `${teacherSubjectLabel(teacherInfo, [lesson.subject])} 不在第 ${week} 週可授課名單中。`,
           [lessonId]
         );
       }
@@ -190,7 +360,7 @@
           issues,
           "warning",
           "TEACHER_SUBJECT_MISMATCH",
-          `${teacherInfo.teacherName} 的授課科目未包含「${lesson.subject}」。`,
+          `${teacherSubjectLabel(teacherInfo)} 的授課科目未包含「${lesson.subject}」。`,
           [lessonId]
         );
       }
@@ -200,7 +370,7 @@
           issues,
           "error",
           "TEACHER_CLASS_LIMIT",
-          `${teacherInfo.teacherName} 未設定可授課 ${className(data, lesson.classId)}。`,
+          `${teacherSubjectLabel(teacherInfo, [lesson.subject])} 未設定可授課 ${className(data, lesson.classId)}。`,
           [lessonId]
         );
       }
@@ -277,7 +447,7 @@
           issues,
           "error",
           "TEACHER_COLLISION",
-          `${teacherName(data, lessons[0].teacherId)} 在 ${formatSlot(lessons[0])} 同時被排到 ${lessons
+          `${teacherLabelForLessons(data, lessons[0].teacherId, lessons)} 在 ${formatSlot(lessons[0])} 同時被排到 ${lessons
             .map((item) => className(data, item.classId))
             .join("、")}。`,
           lessons.map((item) => item.id)
@@ -295,7 +465,7 @@
           issues,
           "warning",
           "TEACHER_WEEKLY_LOAD_OVER_12",
-          `${teacherName(data, teacherId)} 第 ${week} 週目前已排 ${periods} 節，超過每週 ${TEACHER_WEEKLY_WARNING_PERIODS} 節建議上限。`,
+          `${teacherLabelForLessons(data, teacherId, lessons)} 第 ${week} 週目前已排 ${periods} 節，超過每週 ${TEACHER_WEEKLY_WARNING_PERIODS} 節建議上限。`,
           lessons.map((item) => item.id),
           teacherWeeklyLoadSuggestion(data, teacherInfo, week, lessons, periods)
         );
@@ -310,7 +480,7 @@
           "error",
           "CLASS_SUBJECT_TEACHER_SPLIT",
           `${className(data, lessons[0].classId)}「${lessons[0].subject}」被排給 ${teacherIds
-            .map((teacherId) => teacherName(data, teacherId))
+            .map((teacherId) => teacherLabel(data, teacherId, lessons[0].subject))
             .join("、")}，同一班同一科目必須由同一位老師授課。`,
           lessons.map((item) => item.id)
         );
@@ -346,9 +516,13 @@
     if (settings.includeWarnings && settings.includeQuotaWarnings && schedule.length) {
       (data.classes || []).forEach((classInfo) => {
         const quotas = (data.courseQuotas || []).filter((quota) => String(quota.grade) === String(classInfo.grade));
+        const missingQuotas = [];
         quotas.forEach((quota) => {
           const key = [classInfo.classId, quota.subject].join("|");
           const actual = quotaCounts.get(key) || 0;
+          if (actual < Number(quota.targetPeriods)) {
+            missingQuotas.push({ quota, actual, missing: Number(quota.targetPeriods) - actual });
+          }
           if (actual !== Number(quota.targetPeriods)) {
             pushIssue(
               issues,
@@ -356,10 +530,29 @@
               "QUOTA_MISMATCH",
               `${classInfo.className}「${quota.subject}」目前 ${actual} 節，目標 ${quota.targetPeriods} 節。`,
               [],
-              quotaSuggestion(data, classInfo, quota, actual)
+              quotaSuggestion(data, schedule, classInfo, quota, actual)
             );
           }
         });
+
+        const emptySlots = allSlotsForClass(classInfo).filter((slot) => !occupiedAt(schedule, slot));
+        if (emptySlots.length && missingQuotas.length) {
+          const missingText = missingQuotas
+            .map((item) => `「${item.quota.subject}」差 ${item.missing} 節`)
+            .join("、");
+          const slotText = emptySlots
+            .slice(0, 5)
+            .map((slot) => formatSlot(slot))
+            .join("、");
+          pushIssue(
+            issues,
+            "warning",
+            "CLASS_EMPTY_BLOCKS",
+            `${classInfo.className} 尚有 ${emptySlots.length} 個空白連堂區塊；未排滿科目：${missingText}。`,
+            [],
+            `空白區塊包含：${slotText}${emptySlots.length > 5 ? "等" : ""}。原因可先看上方 QUOTA_MISMATCH 的診斷；通常與可授課教師、授課週次、同班同科同師規則，或可用空白時段不足有關。`
+          );
+        }
       });
     }
 

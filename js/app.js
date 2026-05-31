@@ -10,6 +10,7 @@
     selectedWeek: 1,
     selectedSlot: null,
     issues: [],
+    unplaced: [],
     printAllWeeks: false,
   };
 
@@ -60,9 +61,11 @@
     const activeVersion = global.DgVersion.listVersions().find((version) => version.isActive);
     if (activeVersion?.schedule?.length) {
       state.schedule = activeVersion.schedule;
+      state.unplaced = [];
     } else {
       const result = global.DgScheduler.autoSchedule(state.data, []);
       state.schedule = result.schedule;
+      state.unplaced = result.unplaced || [];
     }
     refreshIssues();
   }
@@ -689,6 +692,7 @@
       return;
     }
     state.schedule = result.schedule;
+    state.unplaced = [];
     refreshIssues();
     closeEditor();
     renderAll();
@@ -703,6 +707,7 @@
       return;
     }
     state.schedule = global.DgScheduler.clearLesson(state.schedule, state.selectedSlot);
+    state.unplaced = [];
     refreshIssues();
     closeEditor();
     renderAll();
@@ -717,6 +722,7 @@
       return;
     }
     state.schedule = result.schedule;
+    state.unplaced = [];
     refreshIssues();
     renderAll();
     toast("已完成拖拉調課。");
@@ -727,6 +733,7 @@
     const result = global.DgScheduler.autoSchedule(state.data, state.schedule);
     state.schedule = result.schedule;
     state.issues = result.issues;
+    state.unplaced = result.unplaced || [];
     closeEditor();
     renderAll();
     const message = result.unplaced.length
@@ -831,16 +838,67 @@
     toast("社會科設定已更新。");
   }
 
+  function issueSuggestion(issue) {
+    if (issue.suggestion || issue.detail) return issue.suggestion || issue.detail;
+    const suggestions = {
+      INVALID_BLOCK_START: "請把這堂課移到第 1-2 節或第 3-4 節的連堂區塊。",
+      UNKNOWN_CLASS: "請到「班級設定」補上這個班級，或修正課表中的班級代碼。",
+      UNKNOWN_TEACHER: "請到「教師設定」補上教師代碼，或把此課程改給已存在的教師。",
+      TEACHER_WEEK_LIMIT: "請把課程移到該教師可授課週次，或到「教師設定」增加該教師的可授課週次。",
+      TEACHER_SUBJECT_MISMATCH: "請改派可授此科的教師，或到「教師設定」把此科加入該教師的可授科目。",
+      TEACHER_CLASS_LIMIT: "請改派可教該班的教師，或到「教師設定」的「授課班級」加入該班班級代碼。",
+      SOCIAL_SUBJECT_LIMIT: "請到「社會科安排」確認該班允許的兩個社會科科目，或把課表改成允許科目。",
+      CLASS_SLOT_DUPLICATE: "請保留其中一堂，將其他課拖拉到同班空白連堂區塊。",
+      TEACHER_COLLISION: "請把其中一個班級的課移到其他時段，或改派同科且可授該班的另一位教師。",
+      CLASS_SUBJECT_TEACHER_SPLIT: "請統一該班該科授課教師；可先選定主要教師，再把其他教師的同科課程改回同一位。",
+      ROOM_CAPACITY: "請把其中幾堂需要同場地的課移到其他時段，或到「場地設定」提高此場地同時容量。",
+      CLASS_SUBJECT_FATIGUE: "請把同班同科其中一個連堂區塊移到其他日期，避免同一天連上 4 節。",
+      QUOTA_MISMATCH: "請依目標節數補排或移除連堂區塊；每個連堂區塊等於 2 節。",
+      CLASS_EMPTY_BLOCKS: "請優先處理同班缺節科目，再依診斷調整教師、週次或授課班級設定。",
+      UNPLACED_AUTO_TASK: "請依原因調整教師設定、可授課週次、授課班級，或手動補排到建議時段。",
+    };
+    return suggestions[issue.code] || "請先查看衝突課程位置，再調整教師、週次、班級或場地設定。";
+  }
+
+  function classLabel(classId) {
+    const classInfo = (state.data.classes || []).find((item) => String(item.classId) === String(classId));
+    return classInfo?.className || classId || "未指定班級";
+  }
+
+  function groupedUnplacedIssues() {
+    const groups = new Map();
+    (state.unplaced || []).forEach((task) => {
+      const key = [task.classId, task.subject, task.week || "不限週次", task.reason || ""].join("|");
+      const current = groups.get(key) || { ...task, count: 0 };
+      current.count += 1;
+      groups.set(key, current);
+    });
+
+    return Array.from(groups.values()).map((task) => ({
+      id: `UNPLACED-${task.classId}-${task.subject}-${task.week || "ANY"}`,
+      level: "warning",
+      code: "UNPLACED_AUTO_TASK",
+      message: `${classLabel(task.classId)}「${task.subject}」第 ${task.week || "可排"} 週有 ${
+        task.count
+      } 個連堂區塊未排入。`,
+      lessonIds: [],
+      detail: task.reason || "",
+      suggestion: task.reason || "請檢查可授課教師、週次、授課班級與空白時段。",
+    }));
+  }
+
   function renderConflicts() {
     refreshIssues();
+    const allIssues = [...state.issues, ...groupedUnplacedIssues()];
     const recommendations = global.DgAiOptimizer.analyze(state.schedule, state.data);
-    const issueHtml = state.issues.length
-      ? state.issues
+    const issueHtml = allIssues.length
+      ? allIssues
           .map(
             (issue) => `
               <article class="conflict-item ${issue.level}">
                 <strong>${issue.level === "error" ? "硬性衝突" : "提醒"}｜${escapeHtml(issue.code)}</strong>
                 <span>${escapeHtml(issue.message)}</span>
+                <span class="issue-suggestion">建議：${escapeHtml(issueSuggestion(issue))}</span>
               </article>
             `
           )
@@ -862,8 +920,11 @@
 
   async function copyConflictText() {
     refreshIssues();
-    const text = state.issues.length
-      ? state.issues.map((issue) => `[${issue.level}] ${issue.code} ${issue.message}`).join("\n")
+    const allIssues = [...state.issues, ...groupedUnplacedIssues()];
+    const text = allIssues.length
+      ? allIssues
+          .map((issue) => `[${issue.level}] ${issue.code} ${issue.message}\n建議：${issueSuggestion(issue)}`)
+          .join("\n\n")
       : "沒有發現衝突。";
     try {
       await navigator.clipboard.writeText(text);
@@ -935,6 +996,7 @@
         const version = global.DgVersion.loadVersion(button.dataset.versionLoad);
         if (!version) return;
         state.schedule = global.DgConfig.clone(version.schedule || []);
+        state.unplaced = [];
         refreshIssues();
         state.activeView = "schedule";
         closeEditor();
