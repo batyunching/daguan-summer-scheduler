@@ -9,6 +9,8 @@
     selectedTeacherId: "",
     selectedWeek: 1,
     selectedSlot: null,
+    adjustLessonId: "",
+    pendingMove: null,
     issues: [],
     unplaced: [],
     printAllWeeks: false,
@@ -179,6 +181,8 @@
       state.viewMode = els.viewModeSelect.value;
       if (state.currentUser?.role === "teacher") state.viewMode = "teacher";
       state.selectedWeek = 1;
+      state.adjustLessonId = "";
+      state.pendingMove = null;
       closeEditor();
       renderAll();
     });
@@ -186,6 +190,8 @@
     els.classSelect.addEventListener("change", () => {
       state.selectedClassId = els.classSelect.value;
       state.selectedWeek = 1;
+      state.adjustLessonId = "";
+      state.pendingMove = null;
       closeEditor();
       renderAll();
     });
@@ -193,12 +199,16 @@
     els.teacherSelect.addEventListener("change", () => {
       state.selectedTeacherId = els.teacherSelect.value;
       state.selectedWeek = 1;
+      state.adjustLessonId = "";
+      state.pendingMove = null;
       closeEditor();
       renderAll();
     });
 
     els.weekSelect.addEventListener("change", () => {
       state.selectedWeek = Number(els.weekSelect.value);
+      state.adjustLessonId = "";
+      state.pendingMove = null;
       closeEditor();
       renderAll();
     });
@@ -409,6 +419,130 @@
     return `<h3 class="week-title">${escapeHtml(weekRangeLabel(week))}</h3>`;
   }
 
+  function movingLesson() {
+    return state.adjustLessonId ? state.schedule.find((lesson) => lesson.id === state.adjustLessonId) : null;
+  }
+
+  function resetAdjustMode() {
+    state.adjustLessonId = "";
+    state.pendingMove = null;
+  }
+
+  function targetLessonForSlot(slot) {
+    return global.DgScheduler.occupiedAt(state.schedule, slot);
+  }
+
+  function sameSlot(lesson, slot) {
+    return (
+      lesson &&
+      String(lesson.classId) === String(slot.classId) &&
+      Number(lesson.week) === Number(slot.week) &&
+      Number(lesson.day) === Number(slot.day) &&
+      Number(lesson.blockStart) === Number(slot.blockStart)
+    );
+  }
+
+  function sourceLabel(source) {
+    if (source === "auto") return "系統排課";
+    if (source === "pre") return "預排鎖定";
+    return "手動調整";
+  }
+
+  function roomLabel(lesson) {
+    const roomType = lesson.roomType || "普通";
+    const room = (state.data.rooms || []).find((item) => item.roomType === roomType);
+    if (room?.roomName) return room.roomName;
+    return roomType === "普通" ? "一般教室" : roomType;
+  }
+
+  function moveSlotStatus(slot) {
+    const lesson = movingLesson();
+    if (!lesson || String(lesson.classId) !== String(slot.classId)) return null;
+    if (sameSlot(lesson, slot)) {
+      return { kind: "current", label: "目前位置", message: "這是目前位置。" };
+    }
+
+    const targetLesson = targetLessonForSlot(slot);
+    const result = global.DgScheduler.moveLesson(state.schedule, lesson.id, slot, state.data);
+    if (result.canConfirm && result.confirmationType === "CLASS_SUBJECT_FATIGUE") {
+      return {
+        kind: "caution",
+        label: "需確認",
+        message: result.message,
+        warnings: result.warnings || [result.message],
+        previewSchedule: result.previewSchedule,
+        targetLesson,
+      };
+    }
+    if (result.ok) {
+      return {
+        kind: targetLesson ? "swap" : "target",
+        label: targetLesson ? "可交換" : "可移入",
+        message: targetLesson ? "可與此課程交換時段。" : "可移到這個空白連堂區塊。",
+        warnings: result.warnings || [],
+        previewSchedule: result.schedule,
+        targetLesson,
+      };
+    }
+    return { kind: "blocked", label: "不可調", message: result.message || "不符合調課限制。" };
+  }
+
+  function slotText(slot) {
+    return `第 ${slot.week} 週 ${global.DgConstraints.dayLabel(slot.day)} ${global.DgConstraints.blockLabel(slot.blockStart)}`;
+  }
+
+  function pendingMoveSchedule() {
+    return state.pendingMove?.previewSchedule || state.schedule;
+  }
+
+  function renderAdjustBanner() {
+    const lesson = movingLesson();
+    if (!lesson) return "";
+    const teacher = global.DgConstraints.teacherName(state.data, lesson.teacherId);
+    return `
+      <div class="adjust-banner">
+        <div>
+          <strong>調課模式</strong>
+          <span>正在調整 ${escapeHtml(lesson.subject)}｜${escapeHtml(teacher)}。請先點選目標位置，系統會顯示調課後預覽，再按確認調課。</span>
+        </div>
+        <button type="button" data-cancel-adjust>取消調課</button>
+      </div>
+    `;
+  }
+
+  function renderPendingMovePanel() {
+    const pending = state.pendingMove;
+    const lesson = movingLesson();
+    if (!pending || !lesson) {
+      return `
+        <div class="adjust-confirm-panel">
+          <strong>尚未選擇目標位置</strong>
+          <span>綠色表示可移入，藍色表示可交換，橘色表示會造成同科一天 4 節，需要再次確認。</span>
+        </div>
+      `;
+    }
+
+    const targetLesson = pending.targetLesson;
+    const targetText = `${slotText(pending.target)}${targetLesson ? `，與「${targetLesson.subject}」交換` : ""}`;
+    const warningText = pending.requiresConfirmation
+      ? `<p class="adjust-warning">不建議這樣調課：${escapeHtml((pending.warnings || []).join(" "))} 若仍要調課，請再次按「我了解，仍要調課」。</p>`
+      : "";
+
+    return `
+      <div class="adjust-confirm-panel ${pending.requiresConfirmation ? "caution" : ""}">
+        <strong>調課後預覽</strong>
+        <span>將「${escapeHtml(lesson.subject)}」調到 ${escapeHtml(targetText)}。</span>
+        ${warningText}
+        <div class="adjust-actions">
+          <button type="button" class="primary-action" data-confirm-adjust>
+            ${pending.requiresConfirmation ? "我了解，仍要調課" : "確認調課"}
+          </button>
+          <button type="button" data-clear-pending-move>重新選擇位置</button>
+        </div>
+      </div>
+    `;
+  }
+
   function renderClassWeekTable(classInfo, week, issueIds) {
     const rows = global.DgConfig.blocks
       .map((block) => {
@@ -436,12 +570,13 @@
     `;
   }
 
-  function renderTeacherWeekTable(teacher, week, issueIds) {
+  function renderTeacherWeekTable(teacher, week, issueIds, scheduleView) {
+    const schedule = scheduleView || state.schedule;
     const rows = global.DgConfig.blocks
       .map((block) => {
         const cells = global.DgConfig.days
           .map((day) => {
-            const lessons = state.schedule.filter(
+            const lessons = schedule.filter(
               (lesson) =>
                 lesson.teacherId === teacher.teacherId &&
                 Number(lesson.week) === Number(week) &&
@@ -471,6 +606,59 @@
     `;
   }
 
+  function renderAdjustTeacherPreview(issueIds) {
+    const lesson = movingLesson();
+    if (!lesson || state.printAllWeeks) return "";
+
+    const scheduleView = pendingMoveSchedule();
+    const previewIssues = new Set(
+      global.DgConstraints.lessonsWithIssues(
+        scheduleView,
+        global.DgConstraints.validateSchedule(scheduleView, state.data)
+      )
+    );
+    const teacherIds = new Set([lesson.teacherId]);
+    if (state.pendingMove?.targetLesson?.teacherId) teacherIds.add(state.pendingMove.targetLesson.teacherId);
+    const teachers = Array.from(teacherIds)
+      .map((teacherId) => (state.data.teachers || []).find((teacher) => teacher.teacherId === teacherId))
+      .filter(Boolean);
+    const weeks = Array.from({ length: maxOutputWeeks() }, (_, index) => index + 1);
+    const title = state.pendingMove ? "相關教師課表：調課後預覽" : "相關教師課表：目前狀態";
+
+    return `
+      <section class="adjust-teacher-preview">
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="eyebrow">Teacher Preview</p>
+            <h3>${escapeHtml(title)}</h3>
+          </div>
+        </div>
+        ${teachers
+          .map(
+            (teacher) => `
+              <article class="teacher-preview-block">
+                <h4>${escapeHtml(teacher.subjectGroup || "")}老師 ${escapeHtml(teacher.teacherName)}</h4>
+                <div class="all-week-schedule compact-weeks">
+                  ${weeks
+                    .map(
+                      (week) =>
+                        `<section class="week-block">${renderWeekTitle(week)}${renderTeacherWeekTable(
+                          teacher,
+                          week,
+                          previewIssues,
+                          scheduleView
+                        )}</section>`
+                    )
+                    .join("")}
+                </div>
+              </article>
+            `
+          )
+          .join("")}
+      </section>
+    `;
+  }
+
   function renderClassSchedule(issueIds) {
     const classInfo = (state.data.classes || []).find((item) => item.classId === state.selectedClassId);
     if (!classInfo) {
@@ -478,18 +666,24 @@
       return;
     }
 
-    if (state.printAllWeeks) {
+    const showAllWeeks = state.printAllWeeks || Boolean(movingLesson());
+    if (showAllWeeks) {
       const weeks = Array.from({ length: maxOutputWeeks() }, (_, index) => index + 1);
       els.scheduleContainer.innerHTML = `
+        ${renderAdjustBanner()}
+        ${movingLesson() ? renderPendingMovePanel() : ""}
         ${renderScheduleHeading(`${classInfo.className} 班級課表`, "大觀國中暑期輔導課表")}
         <div class="all-week-schedule">
           ${weeks.map((week) => `<section class="week-block">${renderWeekTitle(week)}${renderClassWeekTable(classInfo, week, issueIds)}</section>`).join("")}
         </div>
+        ${renderAdjustTeacherPreview(issueIds)}
       `;
       return;
     }
 
     els.scheduleContainer.innerHTML = `
+      ${renderAdjustBanner()}
+      ${movingLesson() ? renderPendingMovePanel() : ""}
       ${renderScheduleHeading(`${classInfo.className} 班級課表`, weekRangeLabel(state.selectedWeek))}
       ${renderClassWeekTable(classInfo, state.selectedWeek, issueIds)}
     `;
@@ -520,17 +714,21 @@
   }
 
   function renderSlot(slot, lesson, issueIds, readonly) {
+    const moveStatus = moveSlotStatus(slot);
     const body = lesson
       ? renderCourseCard(lesson, issueIds, { showClass: false, draggable: canEdit() && !lesson.isLocked })
       : `<div class="empty-slot">${canEdit() ? "點選預排" : "未排課"}</div>`;
     const readonlyClass = readonly || !canEdit() ? " readonly" : "";
+    const moveClass = moveStatus ? ` move-${moveStatus.kind}` : "";
+    const title = moveStatus ? ` title="${escapeHtml(moveStatus.message)}"` : "";
     return `
-      <td class="drop-slot${readonlyClass}"
+      <td class="drop-slot${readonlyClass}${moveClass}"${title}
         data-class-id="${escapeHtml(slot.classId)}"
         data-week="${slot.week}"
         data-day="${slot.day}"
         data-block-start="${slot.blockStart}">
         ${body}
+        ${moveStatus ? `<div class="move-slot-label">${escapeHtml(moveStatus.label)}</div>` : ""}
       </td>
     `;
   }
@@ -540,10 +738,12 @@
     const classes = ["course-card"];
     if (lesson.isLocked) classes.push("locked");
     if (isConflict) classes.push("conflict");
+    if (lesson.id === state.adjustLessonId) classes.push("adjusting");
     const draggable = options.draggable ? "true" : "false";
     const title = options.showClass
       ? `${global.DgConstraints.className(state.data, lesson.classId)}｜${lesson.subject}`
       : lesson.subject;
+    const canAdjustLesson = canEdit() && !lesson.isLocked && !options.showClass && !state.adjustLessonId;
     return `
       <article class="${classes.join(" ")}" draggable="${draggable}" data-lesson-id="${escapeHtml(lesson.id)}">
         <div class="course-main">
@@ -555,15 +755,83 @@
           <span>${escapeHtml(lesson.note || "")}</span>
         </div>
         <div class="chip-row">
-          <span class="chip room">${escapeHtml(lesson.roomType || "普通")}</span>
-          <span class="chip">${escapeHtml(lesson.source === "auto" ? "自動" : lesson.source === "pre" ? "預排" : "手動")}</span>
+          <span class="chip room" title="場地類型">${escapeHtml(`場地：${roomLabel(lesson)}`)}</span>
+          <span class="chip" title="課程來源">${escapeHtml(`來源：${sourceLabel(lesson.source)}`)}</span>
+          ${lesson.id === state.adjustLessonId ? `<span class="chip adjust-chip">調課中</span>` : ""}
+          ${canAdjustLesson ? `<button type="button" class="chip adjust-button" data-adjust-lesson="${escapeHtml(lesson.id)}">調課</button>` : ""}
         </div>
       </article>
     `;
   }
 
+  function setPendingMove(slot, status) {
+    const lesson = movingLesson();
+    if (!lesson) return;
+    let previewSchedule = status.previewSchedule;
+    if (!previewSchedule && status.kind === "caution") {
+      previewSchedule = global.DgScheduler.moveLesson(state.schedule, lesson.id, slot, state.data, {
+        allowClassSubjectFatigue: true,
+      }).schedule;
+    }
+    state.pendingMove = {
+      target: slot,
+      targetLesson: status.targetLesson || targetLessonForSlot(slot),
+      previewSchedule,
+      warnings: status.warnings || [],
+      requiresConfirmation: status.kind === "caution",
+    };
+    closeEditor();
+    renderAll();
+    toast(status.kind === "caution" ? "已產生預覽，這個位置需要再次確認。" : "已產生調課後預覽，請確認是否套用。");
+  }
+
+  function confirmPendingMove() {
+    if (!state.pendingMove || !state.adjustLessonId) return;
+    handleMoveLesson(state.adjustLessonId, state.pendingMove.target, {
+      allowClassSubjectFatigue: state.pendingMove.requiresConfirmation,
+    });
+  }
+
   function handleScheduleClick(event) {
     if (!canEdit() || state.viewMode !== "class") return;
+    const cancelButton = event.target.closest("[data-cancel-adjust]");
+    if (cancelButton) {
+      resetAdjustMode();
+      renderAll();
+      toast("已取消調課模式。");
+      return;
+    }
+
+    const clearPendingButton = event.target.closest("[data-clear-pending-move]");
+    if (clearPendingButton) {
+      state.pendingMove = null;
+      renderAll();
+      toast("請重新選擇調課位置。");
+      return;
+    }
+
+    const confirmButton = event.target.closest("[data-confirm-adjust]");
+    if (confirmButton) {
+      confirmPendingMove();
+      return;
+    }
+
+    const adjustButton = event.target.closest("[data-adjust-lesson]");
+    if (adjustButton) {
+      const lesson = state.schedule.find((item) => item.id === adjustButton.dataset.adjustLesson);
+      if (!lesson) return;
+      event.preventDefault();
+      event.stopPropagation();
+      state.adjustLessonId = lesson.id;
+      state.pendingMove = null;
+      state.selectedClassId = lesson.classId;
+      state.viewMode = "class";
+      closeEditor();
+      renderAll();
+      toast("已進入調課模式，請點選綠色或藍色位置。");
+      return;
+    }
+
     const slotEl = event.target.closest(".drop-slot");
     if (!slotEl || slotEl.classList.contains("readonly")) return;
     const slot = {
@@ -572,6 +840,16 @@
       day: Number(slotEl.dataset.day),
       blockStart: Number(slotEl.dataset.blockStart),
     };
+    if (state.adjustLessonId) {
+      const status = moveSlotStatus(slot);
+      if (status?.kind === "target" || status?.kind === "swap" || status?.kind === "caution") {
+        setPendingMove(slot, status);
+      } else {
+        toast(status?.message || "這個位置不能調入。", "error");
+      }
+      return;
+    }
+
     const lesson = global.DgScheduler.occupiedAt(state.schedule, slot);
     openEditor(slot, lesson);
   }
@@ -696,6 +974,7 @@
       return;
     }
     state.schedule = result.schedule;
+    resetAdjustMode();
     state.unplaced = [];
     refreshIssues();
     closeEditor();
@@ -711,6 +990,7 @@
       return;
     }
     state.schedule = global.DgScheduler.clearLesson(state.schedule, state.selectedSlot);
+    resetAdjustMode();
     state.unplaced = [];
     refreshIssues();
     closeEditor();
@@ -718,18 +998,23 @@
     toast("已清空此連堂區塊。");
   }
 
-  function handleMoveLesson(lessonId, target) {
+  function handleMoveLesson(lessonId, target, options) {
     if (!canEdit()) return;
-    const result = global.DgScheduler.moveLesson(state.schedule, lessonId, target, state.data);
+    const result = global.DgScheduler.moveLesson(state.schedule, lessonId, target, state.data, options);
+    if (result.canConfirm) {
+      toast(`${result.message} 請使用調課預覽中的確認按鈕。`, "error");
+      return;
+    }
     if (!result.ok) {
       toast(result.message, "error");
       return;
     }
     state.schedule = result.schedule;
+    resetAdjustMode();
     state.unplaced = [];
     refreshIssues();
     renderAll();
-    toast("已完成拖拉調課。");
+    toast("已完成調課。");
   }
 
   function handleAutoSchedule() {
@@ -737,6 +1022,7 @@
     const result = global.DgScheduler.autoSchedule(state.data, state.schedule);
     state.schedule = result.schedule;
     state.issues = result.issues;
+    resetAdjustMode();
     state.unplaced = result.unplaced || [];
     closeEditor();
     renderAll();
@@ -1000,6 +1286,7 @@
         const version = global.DgVersion.loadVersion(button.dataset.versionLoad);
         if (!version) return;
         state.schedule = global.DgConfig.clone(version.schedule || []);
+        resetAdjustMode();
         state.unplaced = [];
         refreshIssues();
         state.activeView = "schedule";

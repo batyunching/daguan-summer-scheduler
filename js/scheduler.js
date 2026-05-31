@@ -539,7 +539,39 @@
     };
   }
 
-  function moveLesson(schedule, lessonId, target, data) {
+  function moveFatigueWarnings(schedule, current, targetLesson, originalSlot, targetSlot, data) {
+    const warnings = [];
+    const classLabel = (classId) => global.DgConstraints.className(data, classId);
+    const dayLabel = (day) => global.DgConstraints.dayLabel(day);
+    const countSubjectBlocks = (slot, subject) =>
+      (schedule || []).filter(
+        (lesson) =>
+          String(lesson.classId) === String(slot.classId) &&
+          Number(lesson.week) === Number(slot.week) &&
+          Number(lesson.day) === Number(slot.day) &&
+          lesson.subject === subject
+      ).length;
+
+    if (countSubjectBlocks(targetSlot, current.subject) >= 2) {
+      warnings.push(
+        `${classLabel(current.classId)} 第 ${targetSlot.week} 週 ${dayLabel(targetSlot.day)}「${current.subject}」會變成同一天 4 節。`
+      );
+    }
+
+    if (targetLesson && countSubjectBlocks(originalSlot, targetLesson.subject) >= 2) {
+      warnings.push(
+        `${classLabel(targetLesson.classId)} 第 ${originalSlot.week} 週 ${dayLabel(originalSlot.day)}「${targetLesson.subject}」會變成同一天 4 節。`
+      );
+    }
+
+    return warnings;
+  }
+
+  function moveLesson(schedule, lessonId, target, data, options) {
+    const settings = {
+      allowClassSubjectFatigue: false,
+      ...(options || {}),
+    };
     const current = (schedule || []).find((lesson) => lesson.id === lessonId);
     if (!current) return { ok: false, message: "找不到要移動的課程。" };
     if (current.isLocked) return { ok: false, message: "鎖定課程不可拖拉移動。" };
@@ -585,7 +617,19 @@
       };
     }
 
-    return { ok: true, schedule: next };
+    const fatigueWarnings = moveFatigueWarnings(next, current, targetLesson, originalSlot, targetSlot, data);
+    if (fatigueWarnings.length && !settings.allowClassSubjectFatigue) {
+      return {
+        ok: false,
+        canConfirm: true,
+        confirmationType: "CLASS_SUBJECT_FATIGUE",
+        message: fatigueWarnings.join(" "),
+        warnings: fatigueWarnings,
+        previewSchedule: next,
+      };
+    }
+
+    return { ok: true, schedule: next, warnings: fatigueWarnings };
   }
 
   function upsertLesson(schedule, lessonInput, data) {

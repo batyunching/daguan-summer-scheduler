@@ -5,6 +5,7 @@
 
     container.addEventListener("dragstart", (event) => {
       const card = event.target.closest(".course-card");
+      if (event.target.closest("[data-adjust-lesson]")) return;
       if (!card || card.getAttribute("draggable") !== "true") return;
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", card.dataset.lessonId);

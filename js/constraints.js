@@ -505,7 +505,7 @@
       if (lessons.length >= 2) {
         pushIssue(
           issues,
-          "error",
+          "warning",
           "CLASS_SUBJECT_FATIGUE",
           `${className(data, lessons[0].classId)} 第 ${lessons[0].week} 週 ${dayLabel(lessons[0].day)}「${lessons[0].subject}」連上 4 節。`,
           lessons.map((item) => item.id)
