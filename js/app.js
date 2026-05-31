@@ -16,6 +16,7 @@
     printAllWeeks: false,
   };
 
+  const ALL_WEEKS_VALUE = "all";
   const els = {};
 
   function $(id) {
@@ -180,7 +181,7 @@
     els.viewModeSelect.addEventListener("change", () => {
       state.viewMode = els.viewModeSelect.value;
       if (state.currentUser?.role === "teacher") state.viewMode = "teacher";
-      state.selectedWeek = 1;
+      if (state.selectedWeek !== ALL_WEEKS_VALUE) state.selectedWeek = 1;
       state.adjustLessonId = "";
       state.pendingMove = null;
       closeEditor();
@@ -189,7 +190,7 @@
 
     els.classSelect.addEventListener("change", () => {
       state.selectedClassId = els.classSelect.value;
-      state.selectedWeek = 1;
+      if (state.selectedWeek !== ALL_WEEKS_VALUE) state.selectedWeek = 1;
       state.adjustLessonId = "";
       state.pendingMove = null;
       closeEditor();
@@ -198,7 +199,7 @@
 
     els.teacherSelect.addEventListener("change", () => {
       state.selectedTeacherId = els.teacherSelect.value;
-      state.selectedWeek = 1;
+      if (state.selectedWeek !== ALL_WEEKS_VALUE) state.selectedWeek = 1;
       state.adjustLessonId = "";
       state.pendingMove = null;
       closeEditor();
@@ -206,7 +207,8 @@
     });
 
     els.weekSelect.addEventListener("change", () => {
-      state.selectedWeek = Number(els.weekSelect.value);
+      state.selectedWeek =
+        els.weekSelect.value === ALL_WEEKS_VALUE ? ALL_WEEKS_VALUE : Number(els.weekSelect.value);
       state.adjustLessonId = "";
       state.pendingMove = null;
       closeEditor();
@@ -365,9 +367,12 @@
       state.viewMode === "class"
         ? global.DgScheduler.getGradeWeeks((classes.find((item) => item.classId === state.selectedClassId) || {}).grade)
         : Math.max(...Object.values(global.DgConfig.gradeSettings).map((item) => item.weeks));
-    if (state.selectedWeek > maxWeeks) state.selectedWeek = maxWeeks;
-    els.weekSelect.innerHTML = Array.from({ length: maxWeeks }, (_, index) => index + 1)
-      .map((week) => `<option value="${week}">第 ${week} 週</option>`)
+    if (state.selectedWeek !== ALL_WEEKS_VALUE && state.selectedWeek > maxWeeks) state.selectedWeek = maxWeeks;
+    els.weekSelect.innerHTML = [
+      `<option value="${ALL_WEEKS_VALUE}">全部 ${maxWeeks} 週</option>`,
+      ...Array.from({ length: maxWeeks }, (_, index) => index + 1)
+        .map((week) => `<option value="${week}">第 ${week} 週</option>`),
+    ]
       .join("");
     els.weekSelect.value = state.selectedWeek;
   }
@@ -395,6 +400,17 @@
 
   function maxOutputWeeks() {
     return Math.max(...Object.values(global.DgConfig.gradeSettings).map((item) => item.weeks), 5);
+  }
+
+  function selectedScheduleWeeks(classInfo) {
+    const weeks = classInfo
+      ? global.DgScheduler.getGradeWeeks(classInfo.grade)
+      : maxOutputWeeks();
+    return Array.from({ length: weeks }, (_, index) => index + 1);
+  }
+
+  function isAllWeeksView() {
+    return state.selectedWeek === ALL_WEEKS_VALUE;
   }
 
   function weekRangeLabel(week) {
@@ -666,9 +682,9 @@
       return;
     }
 
-    const showAllWeeks = state.printAllWeeks || Boolean(movingLesson());
+    const showAllWeeks = state.printAllWeeks || isAllWeeksView() || Boolean(movingLesson());
     if (showAllWeeks) {
-      const weeks = Array.from({ length: maxOutputWeeks() }, (_, index) => index + 1);
+      const weeks = selectedScheduleWeeks(classInfo);
       els.scheduleContainer.innerHTML = `
         ${renderAdjustBanner()}
         ${movingLesson() ? renderPendingMovePanel() : ""}
@@ -696,8 +712,8 @@
       return;
     }
 
-    if (state.printAllWeeks) {
-      const weeks = Array.from({ length: maxOutputWeeks() }, (_, index) => index + 1);
+    if (state.printAllWeeks || isAllWeeksView()) {
+      const weeks = selectedScheduleWeeks();
       els.scheduleContainer.innerHTML = `
         ${renderScheduleHeading(`${teacher.teacherName} 教師課表`, "大觀國中暑期輔導課表")}
         <div class="all-week-schedule">
