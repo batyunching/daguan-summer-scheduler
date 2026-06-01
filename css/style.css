@@ -549,6 +549,11 @@ h2 {
   gap: 10px;
 }
 
+.batch-print-block {
+  display: grid;
+  gap: 18px;
+}
+
 .week-title {
   padding-top: 6px;
 }
@@ -1092,6 +1097,16 @@ h2 {
   .week-block {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  .batch-print-block {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .batch-print-block:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 
   .drop-slot {
