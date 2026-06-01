@@ -824,6 +824,10 @@ h2 {
   background: #fbfcfd;
 }
 
+.conflict-item {
+  border-left-width: 8px;
+}
+
 .schema-card small {
   display: block;
   margin-top: 3px;
@@ -867,10 +871,140 @@ h2 {
   background: var(--amber-soft);
 }
 
+.conflict-item.issue-teacher {
+  border-color: #bfdbfe;
+  border-left-color: #2563a8;
+  background: #eff6ff;
+}
+
+.conflict-item.issue-class {
+  border-color: #bbf7d0;
+  border-left-color: #15803d;
+  background: #f0fdf4;
+}
+
+.conflict-item.issue-quota {
+  border-color: #fde68a;
+  border-left-color: #b7791f;
+  background: #fff8df;
+}
+
+.conflict-item.issue-unplaced {
+  border-color: #ddd6fe;
+  border-left-color: #7c3aed;
+  background: #f5f3ff;
+}
+
+.conflict-item.issue-room {
+  border-color: #bae6fd;
+  border-left-color: #0284c7;
+  background: #f0f9ff;
+}
+
+.conflict-item.issue-social {
+  border-color: #99f6e4;
+  border-left-color: #0f766e;
+  background: #ecfdf5;
+}
+
+.conflict-item.issue-recommendation {
+  border-color: #cbd5e1;
+  border-left-color: #475569;
+  background: #f8fafc;
+}
+
+.conflict-item.issue-general {
+  border-color: #d8e0e8;
+  border-left-color: #64748b;
+  background: #fbfcfd;
+}
+
+.conflict-item.error {
+  outline: 2px solid rgba(190, 58, 74, 0.18);
+}
+
 .conflict-item strong,
 .version-item strong {
   display: block;
   margin-bottom: 4px;
+}
+
+.conflict-item-head,
+.dismissed-summary {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.conflict-item-head strong,
+.dismissed-summary strong {
+  margin-bottom: 4px;
+}
+
+.conflict-title-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.conflict-title-row strong {
+  margin-bottom: 0;
+}
+
+.issue-kind {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.kind-teacher {
+  color: #174987;
+  background: #dbeafe;
+}
+
+.kind-class {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.kind-quota {
+  color: #7a4d0a;
+  background: #fef3c7;
+}
+
+.kind-unplaced {
+  color: #5b21b6;
+  background: #ede9fe;
+}
+
+.kind-room {
+  color: #075985;
+  background: #e0f2fe;
+}
+
+.kind-social {
+  color: #115e59;
+  background: #ccfbf1;
+}
+
+.kind-recommendation,
+.kind-general {
+  color: #334155;
+  background: #e2e8f0;
+}
+
+.small-action {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .issue-suggestion {
