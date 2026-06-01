@@ -15,9 +15,12 @@
     unplaced: [],
     printAllWeeks: false,
     dismissedConflictKeys: new Set(),
+    undoStack: [],
+    redoStack: [],
   };
 
   const ALL_WEEKS_VALUE = "all";
+  const HISTORY_LIMIT = 30;
   const els = {};
 
   function $(id) {
@@ -74,6 +77,8 @@
       state.schedule = result.schedule;
       state.unplaced = result.unplaced || [];
     }
+    state.undoStack = [];
+    state.redoStack = [];
     refreshIssues();
   }
 
@@ -104,6 +109,52 @@
     return (items || []).filter((item) => !state.dismissedConflictKeys.has(conflictKey(item, prefix)));
   }
 
+  function scheduleStateKey(schedule, unplaced) {
+    return JSON.stringify({
+      schedule: schedule || [],
+      unplaced: unplaced || [],
+    });
+  }
+
+  function createHistorySnapshot(label) {
+    return {
+      label: label || "課表調整",
+      createdAt: new Date().toISOString(),
+      schedule: global.DgConfig.clone(state.schedule || []),
+      unplaced: global.DgConfig.clone(state.unplaced || []),
+    };
+  }
+
+  function pushUndoSnapshot(label, nextSchedule, nextUnplaced) {
+    const nextKey = scheduleStateKey(nextSchedule, nextUnplaced);
+    const currentKey = scheduleStateKey(state.schedule, state.unplaced);
+    if (nextKey === currentKey) return false;
+
+    state.undoStack.push(createHistorySnapshot(label));
+    if (state.undoStack.length > HISTORY_LIMIT) state.undoStack.shift();
+    state.redoStack = [];
+    return true;
+  }
+
+  function applyScheduleChange(nextSchedule, nextUnplaced, label) {
+    pushUndoSnapshot(label, nextSchedule || [], nextUnplaced || []);
+    state.schedule = global.DgConfig.clone(nextSchedule || []);
+    state.unplaced = global.DgConfig.clone(nextUnplaced || []);
+    clearDismissedConflicts();
+    resetAdjustMode();
+    refreshIssues();
+  }
+
+  function restoreHistorySnapshot(snapshot) {
+    state.schedule = global.DgConfig.clone(snapshot.schedule || []);
+    state.unplaced = global.DgConfig.clone(snapshot.unplaced || []);
+    clearDismissedConflicts();
+    resetAdjustMode();
+    closeEditor();
+    refreshIssues();
+    renderAll();
+  }
+
   function bindElements() {
     [
       "loginView",
@@ -126,6 +177,8 @@
       "weekSelect",
       "autoScheduleButton",
       "reloadDataButton",
+      "undoButton",
+      "redoButton",
       "validateButton",
       "saveVersionButton",
       "printButton",
@@ -241,6 +294,8 @@
 
     els.autoScheduleButton.addEventListener("click", handleAutoSchedule);
     els.reloadDataButton.addEventListener("click", handleReloadData);
+    els.undoButton.addEventListener("click", handleUndoSchedule);
+    els.redoButton.addEventListener("click", handleRedoSchedule);
     els.validateButton.addEventListener("click", () => {
       clearDismissedConflicts();
       refreshIssues();
@@ -320,6 +375,24 @@
     toast(loadedRemote ? "已重新讀取 Google Sheets 資料。" : "已重新讀取示範資料。");
   }
 
+  function handleUndoSchedule() {
+    if (!canEdit() || !state.undoStack.length) return;
+    const snapshot = state.undoStack.pop();
+    state.redoStack.push(createHistorySnapshot(snapshot.label));
+    if (state.redoStack.length > HISTORY_LIMIT) state.redoStack.shift();
+    restoreHistorySnapshot(snapshot);
+    toast(`已復原：${snapshot.label}`);
+  }
+
+  function handleRedoSchedule() {
+    if (!canEdit() || !state.redoStack.length) return;
+    const snapshot = state.redoStack.pop();
+    state.undoStack.push(createHistorySnapshot(snapshot.label));
+    if (state.undoStack.length > HISTORY_LIMIT) state.undoStack.shift();
+    restoreHistorySnapshot(snapshot);
+    toast(`已重做：${snapshot.label}`);
+  }
+
   function showLogin() {
     els.loginView.classList.remove("hidden");
     els.appShell.classList.add("hidden");
@@ -372,6 +445,10 @@
     [els.autoScheduleButton, els.saveVersionButton, els.autoSocialButton].forEach((button) => {
       button.disabled = !editable;
     });
+    els.undoButton.disabled = !editable || !state.undoStack.length;
+    els.redoButton.disabled = !editable || !state.redoStack.length;
+    els.undoButton.title = state.undoStack.length ? `復原：${state.undoStack[state.undoStack.length - 1].label}` : "目前沒有可復原的動作";
+    els.redoButton.title = state.redoStack.length ? `重做：${state.redoStack[state.redoStack.length - 1].label}` : "目前沒有可重做的動作";
     els.viewModeSelect.disabled = state.currentUser?.role === "teacher";
   }
 
@@ -1030,11 +1107,7 @@
       els.editorMessage.textContent = result.message;
       return;
     }
-    state.schedule = result.schedule;
-    clearDismissedConflicts();
-    resetAdjustMode();
-    state.unplaced = [];
-    refreshIssues();
+    applyScheduleChange(result.schedule, [], state.selectedSlot.lessonId ? "更新預排課程" : "新增預排課程");
     closeEditor();
     renderAll();
     toast("已套用預排設定。");
@@ -1047,11 +1120,7 @@
       els.editorMessage.textContent = "此課程已鎖定，請先取消鎖定再清空。";
       return;
     }
-    state.schedule = global.DgScheduler.clearLesson(state.schedule, state.selectedSlot);
-    clearDismissedConflicts();
-    resetAdjustMode();
-    state.unplaced = [];
-    refreshIssues();
+    applyScheduleChange(global.DgScheduler.clearLesson(state.schedule, state.selectedSlot), [], "清空課程");
     closeEditor();
     renderAll();
     toast("已清空此連堂區塊。");
@@ -1068,11 +1137,7 @@
       toast(result.message, "error");
       return;
     }
-    state.schedule = result.schedule;
-    clearDismissedConflicts();
-    resetAdjustMode();
-    state.unplaced = [];
-    refreshIssues();
+    applyScheduleChange(result.schedule, [], "調課");
     renderAll();
     toast("已完成調課。");
   }
@@ -1080,11 +1145,7 @@
   function handleAutoSchedule() {
     if (!canEdit()) return;
     const result = global.DgScheduler.autoSchedule(state.data, state.schedule);
-    state.schedule = result.schedule;
-    state.issues = result.issues;
-    clearDismissedConflicts();
-    resetAdjustMode();
-    state.unplaced = result.unplaced || [];
+    applyScheduleChange(result.schedule, result.unplaced || [], "一鍵自動排課");
     closeEditor();
     renderAll();
     const message = result.unplaced.length
@@ -1431,11 +1492,7 @@
       button.addEventListener("click", () => {
         const version = global.DgVersion.loadVersion(button.dataset.versionLoad);
         if (!version) return;
-        state.schedule = global.DgConfig.clone(version.schedule || []);
-        clearDismissedConflicts();
-        resetAdjustMode();
-        state.unplaced = [];
-        refreshIssues();
+        applyScheduleChange(version.schedule || [], [], `載入版本：${version.versionName}`);
         state.activeView = "schedule";
         closeEditor();
         renderAll();
