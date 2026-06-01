@@ -32,6 +32,7 @@ const SHEET_DEFINITIONS = {
       note: "備註",
       assignedClasses: "授課班級",
       teacherPosition: "教師職位",
+      availableDays: "可授課星期",
     },
   },
   Class_Settings: {

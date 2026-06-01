@@ -57,7 +57,7 @@ https://script.google.com/macros/s/你的部署ID/exec?action=initializeSheets
 
 正式上線建議改用 Google OAuth 或學校既有登入機制。
 
-`教師設定` 會包含「教師職位」欄位，可填 `組長`、`導師`、`專任`。若舊表尚未出現此欄，請更新 `Code.gs` 後執行 `action=initializeSheets&forceHeaders=true` 或 `action=localizeHeaders`，再於最後一欄填入職位。
+`教師設定` 會包含「教師職位」與「可授課星期」欄位。教師職位可填 `組長`、`導師`、`專任`；可授課星期可填 `1,2,4,5` 或 `星期一,星期二,星期四,星期五`，留空代表週一到週五都可排。若舊表尚未出現新欄位，請更新 `Code.gs` 後執行 `action=initializeSheets&forceHeaders=true` 或 `action=localizeHeaders`，再於最後欄位填入設定。
 
 ## 已經建立過英文表頭怎麼辦
 
