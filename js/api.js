@@ -90,6 +90,18 @@
     return "專任";
   }
 
+  function parseDay(value) {
+    const text = asText(value).replace(/[星期週周禮拜]/g, "");
+    const map = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5 };
+    if (map[text]) return map[text];
+    const number = Number(text);
+    return Number.isFinite(number) && number >= 1 && number <= 5 ? number : 0;
+  }
+
+  function parseDayList(value) {
+    return Array.from(new Set(splitList(value).map(parseDay).filter(Boolean))).sort((a, b) => a - b);
+  }
+
   function parseNumber(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
@@ -127,6 +139,7 @@
       subjects: splitList(row.subjects),
       assignedClasses: splitClassList(row.assignedClasses),
       teacherPosition: normalizeTeacherPosition(row.teacherPosition),
+      availableDays: parseDayList(row.availableDays),
       availableWeeks: splitList(row.availableWeeks).map((week) => parseNumber(week, 0)).filter(Boolean),
       maxWeeklyPeriods: parseNumber(row.maxWeeklyPeriods, 20),
     }));

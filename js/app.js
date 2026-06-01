@@ -1151,6 +1151,7 @@
       UNKNOWN_CLASS: "請到「班級設定」補上這個班級，或修正課表中的班級代碼。",
       UNKNOWN_TEACHER: "請到「教師設定」補上教師代碼，或把此課程改給已存在的教師。",
       TEACHER_WEEK_LIMIT: "請把課程移到該教師可授課週次，或到「教師設定」增加該教師的可授課週次。",
+      TEACHER_DAY_LIMIT: "請把課程移到該教師可授課星期，或到「教師設定」調整該教師的可授課星期。",
       TEACHER_SUBJECT_MISMATCH: "請改派可授此科的教師，或到「教師設定」把此科加入該教師的可授科目。",
       TEACHER_CLASS_LIMIT: "請改派可教該班的教師，或到「教師設定」的「授課班級」加入該班班級代碼。",
       SOCIAL_SUBJECT_LIMIT: "請到「社會科安排」確認該班允許的兩個社會科科目，或把課表改成允許科目。",
@@ -1161,7 +1162,7 @@
       CLASS_SUBJECT_FATIGUE: "請把同班同科其中一個連堂區塊移到其他日期，避免同一天連上 4 節。",
       QUOTA_MISMATCH: "請依目標節數補排或移除連堂區塊；每個連堂區塊等於 2 節。",
       CLASS_EMPTY_BLOCKS: "請優先處理同班缺節科目，再依診斷調整教師、週次或授課班級設定。",
-      UNPLACED_AUTO_TASK: "請依原因調整教師設定、可授課週次、授課班級，或手動補排到建議時段。",
+      UNPLACED_AUTO_TASK: "請依原因調整教師設定、可授課週次、可授課星期、授課班級，或手動補排到建議時段。",
     };
     return suggestions[issue.code] || "請先查看衝突課程位置，再調整教師、週次、班級或場地設定。";
   }
@@ -1364,10 +1365,57 @@
     els.schemaPreview.innerHTML = cards;
   }
 
+  function renderBatchClassBlock(classInfo, issueIds) {
+    const weeks = selectedScheduleWeeks(classInfo);
+    return `
+      <article class="batch-print-block">
+        ${renderScheduleHeading(`${classInfo.className} 班級課表`, "大觀國中暑期輔導課表")}
+        <div class="all-week-schedule">
+          ${weeks.map((week) => `<section class="week-block">${renderWeekTitle(week)}${renderClassWeekTable(classInfo, week, issueIds)}</section>`).join("")}
+        </div>
+      </article>
+    `;
+  }
+
+  function renderBatchTeacherBlock(teacher, issueIds) {
+    const weeks = selectedScheduleWeeks();
+    return `
+      <article class="batch-print-block">
+        ${renderScheduleHeading(`${teacher.teacherName} 教師課表`, "大觀國中暑期輔導課表")}
+        <div class="all-week-schedule">
+          ${weeks.map((week) => `<section class="week-block">${renderWeekTitle(week)}${renderTeacherWeekTable(teacher, week, issueIds)}</section>`).join("")}
+        </div>
+      </article>
+    `;
+  }
+
   function printCurrentSchedule() {
     state.printAllWeeks = true;
     state.activeView = "schedule";
     renderAll();
+    global.DgExporter.printSchedule();
+    setTimeout(() => {
+      state.printAllWeeks = false;
+      renderAll();
+    }, 700);
+  }
+
+  function printBatchSchedules(type) {
+    refreshIssues();
+    const issueIds = global.DgConstraints.lessonsWithIssues(state.schedule, state.issues);
+    const items = type === "classes" ? state.data.classes || [] : state.data.teachers || [];
+    if (!items.length) {
+      toast(type === "classes" ? "尚未建立班級資料。" : "尚未建立教師資料。", "error");
+      return;
+    }
+
+    state.printAllWeeks = true;
+    state.activeView = "schedule";
+    renderAll();
+    els.scheduleContainer.innerHTML =
+      type === "classes"
+        ? items.map((classInfo) => renderBatchClassBlock(classInfo, issueIds)).join("")
+        : items.map((teacher) => renderBatchTeacherBlock(teacher, issueIds)).join("");
     global.DgExporter.printSchedule();
     setTimeout(() => {
       state.printAllWeeks = false;
@@ -1395,6 +1443,12 @@
     if (action === "teacherPrint") {
       state.viewMode = "teacher";
       printCurrentSchedule();
+    }
+    if (action === "allClassesPrint") {
+      printBatchSchedules("classes");
+    }
+    if (action === "allTeachersPrint") {
+      printBatchSchedules("teachers");
     }
   }
 
