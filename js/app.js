@@ -14,6 +14,7 @@
     issues: [],
     unplaced: [],
     printAllWeeks: false,
+    dismissedConflictKeys: new Set(),
   };
 
   const ALL_WEEKS_VALUE = "all";
@@ -45,13 +46,16 @@
   }
 
   async function loadData() {
+    let loadedRemote = global.DgApi.hasRemote();
     try {
       state.data = await global.DgApi.readAllTables();
     } catch (error) {
+      loadedRemote = false;
       state.data = global.DgConfig.cloneMockData();
       toast(`讀取遠端資料失敗，已改用示範資料：${error.message}`, "error");
     }
     state.data.socialAssignments = global.DgSocialAssignment.autoAssign(state.data, true);
+    return loadedRemote;
   }
 
   function setupInitialState() {
@@ -81,6 +85,25 @@
     return state.issues.filter((issue) => issue.level === "error");
   }
 
+  function clearDismissedConflicts() {
+    state.dismissedConflictKeys.clear();
+  }
+
+  function conflictKey(item, prefix) {
+    const lessonIds = (item.lessonIds || []).map(String).sort().join(",");
+    return [
+      prefix || item.level || "item",
+      item.code || item.title || "",
+      item.message || item.body || "",
+      item.detail || "",
+      lessonIds,
+    ].join("|");
+  }
+
+  function visibleConflictItems(items, prefix) {
+    return (items || []).filter((item) => !state.dismissedConflictKeys.has(conflictKey(item, prefix)));
+  }
+
   function bindElements() {
     [
       "loginView",
@@ -102,6 +125,7 @@
       "teacherSelect",
       "weekSelect",
       "autoScheduleButton",
+      "reloadDataButton",
       "validateButton",
       "saveVersionButton",
       "printButton",
@@ -216,7 +240,9 @@
     });
 
     els.autoScheduleButton.addEventListener("click", handleAutoSchedule);
+    els.reloadDataButton.addEventListener("click", handleReloadData);
     els.validateButton.addEventListener("click", () => {
+      clearDismissedConflicts();
       refreshIssues();
       state.activeView = "conflicts";
       renderAll();
@@ -241,6 +267,7 @@
     });
 
     els.autoSocialButton.addEventListener("click", () => {
+      clearDismissedConflicts();
       state.data.classes = state.data.classes.map((classInfo) => ({ ...classInfo, socialMode: "auto" }));
       state.data.socialAssignments = global.DgSocialAssignment.autoAssign(state.data, false);
       refreshIssues();
@@ -249,6 +276,7 @@
     });
 
     els.socialTable.addEventListener("change", handleSocialChange);
+    els.conflictList.addEventListener("click", handleConflictListClick);
     els.scheduleContainer.addEventListener("click", handleScheduleClick);
     els.closeEditorButton.addEventListener("click", closeEditor);
     els.lessonForm.addEventListener("submit", handleLessonSubmit);
@@ -277,6 +305,19 @@
     } catch (error) {
       els.loginMessage.textContent = error.message;
     }
+  }
+
+  async function handleReloadData() {
+    const currentSchedule = state.schedule;
+    const loadedRemote = await loadData();
+    state.schedule = currentSchedule;
+    state.adjustLessonId = "";
+    state.pendingMove = null;
+    clearDismissedConflicts();
+    closeEditor();
+    refreshIssues();
+    renderAll();
+    toast(loadedRemote ? "已重新讀取 Google Sheets 資料。" : "已重新讀取示範資料。");
   }
 
   function showLogin() {
@@ -990,6 +1031,7 @@
       return;
     }
     state.schedule = result.schedule;
+    clearDismissedConflicts();
     resetAdjustMode();
     state.unplaced = [];
     refreshIssues();
@@ -1006,6 +1048,7 @@
       return;
     }
     state.schedule = global.DgScheduler.clearLesson(state.schedule, state.selectedSlot);
+    clearDismissedConflicts();
     resetAdjustMode();
     state.unplaced = [];
     refreshIssues();
@@ -1026,6 +1069,7 @@
       return;
     }
     state.schedule = result.schedule;
+    clearDismissedConflicts();
     resetAdjustMode();
     state.unplaced = [];
     refreshIssues();
@@ -1038,6 +1082,7 @@
     const result = global.DgScheduler.autoSchedule(state.data, state.schedule);
     state.schedule = result.schedule;
     state.issues = result.issues;
+    clearDismissedConflicts();
     resetAdjustMode();
     state.unplaced = result.unplaced || [];
     closeEditor();
@@ -1139,6 +1184,7 @@
       state.data.socialAssignments = global.DgSocialAssignment.setAuto(state.data.socialAssignments, classId);
       state.data.socialAssignments = global.DgSocialAssignment.autoAssign(state.data, true);
     }
+    clearDismissedConflicts();
     refreshIssues();
     renderAll();
     toast("社會科設定已更新。");
@@ -1165,6 +1211,27 @@
       UNPLACED_AUTO_TASK: "請依原因調整教師設定、可授課週次、可授課星期、授課班級，或手動補排到建議時段。",
     };
     return suggestions[issue.code] || "請先查看衝突課程位置，再調整教師、週次、班級或場地設定。";
+  }
+
+  function issueTypeInfo(issue) {
+    const code = issue?.code || "";
+    if (code === "UNPLACED_AUTO_TASK") return { key: "unplaced", label: "未排入" };
+    if (code === "QUOTA_MISMATCH") return { key: "quota", label: "節數不足" };
+    if (code.startsWith("TEACHER") || code === "UNKNOWN_TEACHER") return { key: "teacher", label: "教師" };
+    if (code.startsWith("CLASS") || code === "UNKNOWN_CLASS" || code === "INVALID_BLOCK_START") {
+      return { key: "class", label: "班級" };
+    }
+    if (code.startsWith("ROOM")) return { key: "room", label: "場地" };
+    if (code.startsWith("SOCIAL")) return { key: "social", label: "社會科" };
+    return { key: "general", label: "一般" };
+  }
+
+  function recommendationTypeInfo(item) {
+    const title = `${item?.title || ""} ${item?.body || ""}`;
+    if (title.includes("教師") || title.includes("授課")) return { key: "teacher", label: "最佳化：教師" };
+    if (title.includes("班級")) return { key: "class", label: "最佳化：班級" };
+    if (title.includes("節")) return { key: "quota", label: "最佳化：節數" };
+    return { key: "recommendation", label: "最佳化" };
   }
 
   function classLabel(classId) {
@@ -1194,44 +1261,106 @@
     }));
   }
 
+  function handleConflictListClick(event) {
+    const button = event.target.closest("[data-conflict-action]");
+    if (!button) return;
+
+    if (button.dataset.conflictAction === "dismiss") {
+      const key = button.dataset.issueKey;
+      if (!key) return;
+      state.dismissedConflictKeys.add(key);
+      renderConflicts();
+      toast("已從目前清單刪去這項提醒。");
+      return;
+    }
+
+    if (button.dataset.conflictAction === "restore") {
+      clearDismissedConflicts();
+      renderConflicts();
+      toast("已重新顯示全部檢查項目。");
+    }
+  }
+
   function renderConflicts() {
     refreshIssues();
     const allIssues = [...state.issues, ...groupedUnplacedIssues()];
     const recommendations = global.DgAiOptimizer.analyze(state.schedule, state.data);
-    const issueHtml = allIssues.length
-      ? allIssues
+    const visibleIssues = visibleConflictItems(allIssues);
+    const visibleRecommendations = visibleConflictItems(recommendations, "recommendation");
+    const hiddenCount = allIssues.length + recommendations.length - visibleIssues.length - visibleRecommendations.length;
+    const issueHtml = visibleIssues.length
+      ? visibleIssues
           .map(
-            (issue) => `
-              <article class="conflict-item ${issue.level}">
-                <strong>${issue.level === "error" ? "硬性衝突" : "提醒"}｜${escapeHtml(issue.code)}</strong>
+            (issue) => {
+              const key = conflictKey(issue);
+              const typeInfo = issueTypeInfo(issue);
+              return `
+              <article class="conflict-item ${issue.level} issue-${typeInfo.key}">
+                <div class="conflict-item-head">
+                  <div class="conflict-title-row">
+                    <span class="issue-kind kind-${typeInfo.key}">${escapeHtml(typeInfo.label)}</span>
+                    <strong>${issue.level === "error" ? "硬性衝突" : "提醒"}｜${escapeHtml(issue.code)}</strong>
+                  </div>
+                  <button type="button" class="small-action" data-conflict-action="dismiss" data-issue-key="${escapeHtml(
+                    key
+                  )}">刪去</button>
+                </div>
                 <span>${escapeHtml(issue.message)}</span>
                 <span class="issue-suggestion">建議：${escapeHtml(issueSuggestion(issue))}</span>
               </article>
-            `
+            `;
+            }
           )
           .join("")
+      : hiddenCount
+      ? ""
       : `<article class="conflict-item"><strong>沒有發現衝突</strong><span>目前課表可儲存。</span></article>`;
 
-    const recommendationHtml = recommendations
+    const recommendationHtml = visibleRecommendations
       .map(
-        (item) => `
-          <article class="conflict-item ${item.level === "error" ? "error" : item.level === "warning" ? "warning" : ""}">
-            <strong>最佳化建議｜${escapeHtml(item.title)}</strong>
+        (item) => {
+          const key = conflictKey(item, "recommendation");
+          const typeInfo = recommendationTypeInfo(item);
+          return `
+          <article class="conflict-item ${
+            item.level === "error" ? "error" : item.level === "warning" ? "warning" : ""
+          } issue-${typeInfo.key}">
+            <div class="conflict-item-head">
+              <div class="conflict-title-row">
+                <span class="issue-kind kind-${typeInfo.key}">${escapeHtml(typeInfo.label)}</span>
+                <strong>最佳化建議｜${escapeHtml(item.title)}</strong>
+              </div>
+              <button type="button" class="small-action" data-conflict-action="dismiss" data-issue-key="${escapeHtml(
+                key
+              )}">刪去</button>
+            </div>
             <span>${escapeHtml(item.body)}</span>
           </article>
-        `
+        `;
+        }
       )
       .join("");
-    els.conflictList.innerHTML = issueHtml + recommendationHtml;
+    const hiddenHtml = hiddenCount
+      ? `
+        <article class="conflict-item dismissed-summary">
+          <strong>已刪去 ${hiddenCount} 項</strong>
+          <button type="button" class="small-action" data-conflict-action="restore">重新顯示全部</button>
+        </article>
+      `
+      : "";
+    els.conflictList.innerHTML = issueHtml + recommendationHtml + hiddenHtml;
   }
 
   async function copyConflictText() {
     refreshIssues();
     const allIssues = [...state.issues, ...groupedUnplacedIssues()];
-    const text = allIssues.length
-      ? allIssues
+    const visibleIssues = visibleConflictItems(allIssues);
+    const text = visibleIssues.length
+      ? visibleIssues
           .map((issue) => `[${issue.level}] ${issue.code} ${issue.message}\n建議：${issueSuggestion(issue)}`)
           .join("\n\n")
+      : state.dismissedConflictKeys.size
+      ? "目前顯示清單沒有未刪去的檢查項目。"
       : "沒有發現衝突。";
     try {
       await navigator.clipboard.writeText(text);
@@ -1303,6 +1432,7 @@
         const version = global.DgVersion.loadVersion(button.dataset.versionLoad);
         if (!version) return;
         state.schedule = global.DgConfig.clone(version.schedule || []);
+        clearDismissedConflicts();
         resetAdjustMode();
         state.unplaced = [];
         refreshIssues();
@@ -1331,6 +1461,7 @@
     }
     try {
       await loadData();
+      clearDismissedConflicts();
       setupInitialState();
       renderAll();
       toast("已儲存並重新讀取 Google Sheets 資料。");
