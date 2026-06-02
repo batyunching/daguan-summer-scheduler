@@ -780,6 +780,11 @@ h2 {
   background: var(--amber-soft);
 }
 
+.chip.approved-chip {
+  color: #5b21b6;
+  background: #ede9fe;
+}
+
 .chip.adjust-button {
   min-height: 24px;
   border: 0;
