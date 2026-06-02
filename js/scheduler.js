@@ -29,6 +29,10 @@
       teacherId: raw.teacherId,
       roomType: raw.roomType || "普通",
       isLocked: raw.isLocked === true || String(raw.isLocked).toUpperCase() === "TRUE",
+      fatigueApproved:
+        raw.fatigueApproved === true ||
+        String(raw.fatigueApproved || "").toUpperCase() === "TRUE" ||
+        String(raw.fatigueApproved || "") === "是",
       note: raw.note || "",
       source: raw.source || source || "manual",
       createdAt: raw.createdAt || new Date().toISOString(),
@@ -406,6 +410,7 @@
 
         const next = schedule.filter((lesson) => lesson.id !== lessonToMove.id);
         if (sameClassSubjectDay(next, task.classId, sourceSlot.week, sourceSlot.day, task.subject)) continue;
+        if (sameClassSubjectDay(next, lessonToMove.classId, emptySlot.week, emptySlot.day, lessonToMove.subject)) continue;
 
         const movedLesson = {
           ...lessonToMove,
@@ -602,6 +607,31 @@
     return warnings;
   }
 
+  function approveFatigueGroups(schedule, groups) {
+    const approvedKeys = new Set(
+      (groups || [])
+        .filter((item) => item?.slot && item?.subject)
+        .map((item) => [item.slot.classId, item.slot.week, item.slot.day, item.subject].join("|"))
+    );
+    if (!approvedKeys.size) return schedule;
+
+    const groupCounts = {};
+    (schedule || []).forEach((lesson) => {
+      const key = [lesson.classId, lesson.week, lesson.day, lesson.subject].join("|");
+      if (approvedKeys.has(key)) groupCounts[key] = (groupCounts[key] || 0) + 1;
+    });
+
+    return (schedule || []).map((lesson) => {
+      const key = [lesson.classId, lesson.week, lesson.day, lesson.subject].join("|");
+      if (!approvedKeys.has(key) || groupCounts[key] < 2) return lesson;
+      return {
+        ...lesson,
+        fatigueApproved: true,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  }
+
   function moveLesson(schedule, lessonId, target, data, options) {
     const settings = {
       allowClassSubjectFatigue: false,
@@ -635,15 +665,17 @@
 
     const next = schedule.map((lesson) => {
       if (lesson.id === current.id) {
-        return { ...lesson, ...targetSlot, updatedAt: new Date().toISOString() };
+        return { ...lesson, ...targetSlot, fatigueApproved: false, updatedAt: new Date().toISOString() };
       }
       if (targetLesson && lesson.id === targetLesson.id) {
-        return { ...lesson, ...originalSlot, updatedAt: new Date().toISOString() };
+        return { ...lesson, ...originalSlot, fatigueApproved: false, updatedAt: new Date().toISOString() };
       }
       return lesson;
     });
 
-    const hardErrors = global.DgConstraints.getHardErrors(next, data);
+    const hardErrors = global.DgConstraints.getHardErrors(next, data, {
+      allowClassSubjectFatigue: true,
+    });
     if (hardErrors.length) {
       return {
         ok: false,
@@ -664,7 +696,17 @@
       };
     }
 
-    return { ok: true, schedule: next, warnings: fatigueWarnings };
+    const approvedSchedule = settings.allowClassSubjectFatigue
+      ? approveFatigueGroups(
+          next,
+          [
+            { slot: targetSlot, subject: current.subject },
+            targetLesson ? { slot: originalSlot, subject: targetLesson.subject } : null,
+          ].filter(Boolean)
+        )
+      : next;
+
+    return { ok: true, schedule: approvedSchedule, warnings: fatigueWarnings };
   }
 
   function upsertLesson(schedule, lessonInput, data) {

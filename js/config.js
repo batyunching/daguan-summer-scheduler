@@ -1,5 +1,5 @@
 (function (global) {
-  const APP_BUILD = "20260602-1";
+  const APP_BUILD = "20260602-2";
 
   const DAYS = [
     { id: 1, label: "星期一", short: "一" },
@@ -51,6 +51,7 @@
       "teacherId",
       "roomType",
       "isLocked",
+      "fatigueApproved",
       "createdAt",
       "updatedAt",
     ],
@@ -115,6 +116,7 @@
     day: "星期",
     slotStart: "連堂起點",
     isLocked: "是否鎖定",
+    fatigueApproved: "管理者同意連四",
     versionId: "版本代碼",
     period: "節次",
     createdAt: "建立時間",

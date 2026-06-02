@@ -891,6 +891,7 @@
         <div class="chip-row">
           <span class="chip room" title="場地類型">${escapeHtml(`場地：${roomLabel(lesson)}`)}</span>
           <span class="chip" title="課程來源">${escapeHtml(`來源：${sourceLabel(lesson.source)}`)}</span>
+          ${lesson.fatigueApproved ? `<span class="chip approved-chip" title="管理者已同意同班同科同天連上 4 節">已同意連四</span>` : ""}
           ${lesson.id === state.adjustLessonId ? `<span class="chip adjust-chip">調課中</span>` : ""}
           ${canAdjustLesson ? `<button type="button" class="chip adjust-button" data-adjust-lesson="${escapeHtml(lesson.id)}">調課</button>` : ""}
         </div>
@@ -1266,7 +1267,8 @@
       TEACHER_COLLISION: "請把其中一個班級的課移到其他時段，或改派同科且可授該班的另一位教師。",
       CLASS_SUBJECT_TEACHER_SPLIT: "請統一該班該科授課教師；可先選定主要教師，再把其他教師的同科課程改回同一位。",
       ROOM_CAPACITY: "請把其中幾堂需要同場地的課移到其他時段，或到「場地設定」提高此場地同時容量。",
-      CLASS_SUBJECT_FATIGUE: "請把同班同科其中一個連堂區塊移到其他日期，避免同一天連上 4 節。",
+      CLASS_SUBJECT_FATIGUE:
+        "這是硬性限制，請把同班同科其中一個連堂區塊移到其他日期。若現場確定無法避免，請由管理者使用調課功能二次確認，系統會標記為已同意例外。",
       QUOTA_MISMATCH: "請依目標節數補排或移除連堂區塊；每個連堂區塊等於 2 節。",
       CLASS_EMPTY_BLOCKS: "請優先處理同班缺節科目，再依診斷調整教師、週次或授課班級設定。",
       UNPLACED_AUTO_TASK: "請依原因調整教師設定、可授課週次、可授課星期、授課班級，或手動補排到建議時段。",

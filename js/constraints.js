@@ -74,6 +74,14 @@
     });
   }
 
+  function isFatigueApproved(lesson) {
+    return (
+      lesson?.fatigueApproved === true ||
+      String(lesson?.fatigueApproved || "").toUpperCase() === "TRUE" ||
+      String(lesson?.fatigueApproved || "") === "是"
+    );
+  }
+
   function getSocialSubjectsForClass(assignments, classId) {
     const row = (assignments || []).find((item) => item.classId === classId);
     if (!row) return [];
@@ -322,6 +330,7 @@
     const settings = {
       includeWarnings: true,
       includeQuotaWarnings: true,
+      allowClassSubjectFatigue: false,
       ...(options || {}),
     };
     const issues = [];
@@ -532,12 +541,15 @@
 
     classDaySubjects.forEach((lessons) => {
       if (lessons.length >= 2) {
+        const isApprovedException = lessons.every(isFatigueApproved);
+        if (isApprovedException || settings.allowClassSubjectFatigue) return;
         pushIssue(
           issues,
-          "warning",
+          "error",
           "CLASS_SUBJECT_FATIGUE",
-          `${className(data, lessons[0].classId)} 第 ${lessons[0].week} 週 ${dayLabel(lessons[0].day)}「${lessons[0].subject}」連上 4 節。`,
-          lessons.map((item) => item.id)
+          `${className(data, lessons[0].classId)} 第 ${lessons[0].week} 週 ${dayLabel(lessons[0].day)}「${lessons[0].subject}」連上 4 節，未經管理者同意。`,
+          lessons.map((item) => item.id),
+          "自動排課會避免同班同科同一天連上 4 節。若現場確定沒有其他可排方式，請由管理者使用調課功能二次確認，系統會標記為已同意例外。"
         );
       }
     });
@@ -591,8 +603,8 @@
     return issues;
   }
 
-  function getHardErrors(schedule, data) {
-    return validateSchedule(schedule, data, { includeWarnings: false });
+  function getHardErrors(schedule, data, options) {
+    return validateSchedule(schedule, data, { includeWarnings: false, ...(options || {}) });
   }
 
   function lessonsWithIssues(schedule, issues) {

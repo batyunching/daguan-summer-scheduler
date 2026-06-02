@@ -59,6 +59,7 @@
           teacherId: lesson.teacherId,
           roomType: lesson.roomType,
           isLocked: lesson.isLocked,
+          fatigueApproved: lesson.fatigueApproved,
           createdAt: lesson.createdAt || "",
           updatedAt: lesson.updatedAt || "",
         });
