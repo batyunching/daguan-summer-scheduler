@@ -59,6 +59,8 @@ https://script.google.com/macros/s/你的部署ID/exec?action=initializeSheets
 
 `教師設定` 會包含「教師職位」與「可授課星期」欄位。教師職位可填 `組長`、`導師`、`專任`；可授課星期可填 `1,2,4,5` 或 `星期一,星期二,星期四,星期五`，留空代表週一到週五都可排。若舊表尚未出現新欄位，請更新 `Code.gs` 後執行 `action=initializeSheets&forceHeaders=true` 或 `action=localizeHeaders`，再於最後欄位填入設定。
 
+`課表資料庫` 會包含「管理者同意連四」欄位。這個欄位由前端調課二次確認自動寫入，用來記錄同班同科同一天 4 節的管理者核准例外。若舊表尚未出現此欄位，請更新 `Code.gs` 後執行 `action=initializeSheets&forceHeaders=true` 或 `action=localizeHeaders`。
+
 ## 已經建立過英文表頭怎麼辦
 
 如果你先前已用舊版程式建立過分頁，分頁名稱可能已經是中文，但第 1 列表頭仍是英文。請更新 Apps Script 的 `Code.gs` 後，在瀏覽器執行：

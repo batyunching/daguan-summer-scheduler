@@ -103,6 +103,7 @@ const SHEET_DEFINITIONS = {
       teacherId: "教師代碼",
       roomType: "場地類型",
       isLocked: "是否鎖定",
+      fatigueApproved: "管理者同意連四",
       createdAt: "建立時間",
       updatedAt: "更新時間",
     },
@@ -424,6 +425,7 @@ function expandScheduleRows_(schedule, versionId) {
         teacherId: lesson.teacherId,
         roomType: lesson.roomType || "普通",
         isLocked: lesson.isLocked === true,
+        fatigueApproved: lesson.fatigueApproved === true,
         createdAt: lesson.createdAt || "",
         updatedAt: lesson.updatedAt || new Date().toISOString(),
       });
