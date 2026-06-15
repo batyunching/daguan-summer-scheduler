@@ -109,13 +109,35 @@
     return availableDaysForTeacher(teacher).includes(Number(day));
   }
 
+  function teacherUnavailableDateKeys(teacher) {
+    return new Set((teacher?.unavailableDates || []).map(String).filter(Boolean));
+  }
+
+  function slotDate(week, day, data) {
+    return global.DgConfig.getDayDate(week, day, data);
+  }
+
+  function slotDateKey(week, day, data) {
+    return global.DgConfig.dateKey(slotDate(week, day, data));
+  }
+
+  function slotDateLabel(week, day, data) {
+    return global.DgConfig.formatMonthDay(slotDate(week, day, data));
+  }
+
+  function teacherCanTeachDate(teacher, week, day, data) {
+    if (!teacher || !week || !day) return true;
+    return !teacherUnavailableDateKeys(teacher).has(slotDateKey(week, day, data));
+  }
+
   function teachersForSubject(data, subject, classId, week, day) {
     return (data.teachers || []).filter((teacher) => {
       const canTeachSubject = (teacher.subjects || []).includes(subject);
       const canTeachClass = teacherCanTeachClass(teacher, classId);
       const canTeachWeek = !week || (teacher.availableWeeks || []).map(Number).includes(Number(week));
       const canTeachDay = !day || teacherCanTeachDay(teacher, day);
-      return canTeachSubject && canTeachClass && canTeachWeek && canTeachDay;
+      const canTeachDate = !day || teacherCanTeachDate(teacher, week, day, data);
+      return canTeachSubject && canTeachClass && canTeachWeek && canTeachDay && canTeachDate;
     });
   }
 
@@ -230,12 +252,23 @@
       return `剩餘空白區塊在${emptyDays}，但「${subject}」可用教師的可授課星期不符合。`;
     }
 
+    const dateTeachers = dayTeachers.filter((teacher) =>
+      emptySlots.some((slot) => teacherCanTeachDate(teacher, slot.week, slot.day, data))
+    );
+    if (!dateTeachers.length) {
+      const emptyDates = Array.from(new Set(emptySlots.map((slot) => slotDateLabel(slot.week, slot.day, data))))
+        .slice(0, 8)
+        .join("、");
+      return `剩餘空白日期 ${emptyDates} 都落在「${subject}」教師的不可排課日期，請調整教師設定或改排其他日期。`;
+    }
+
     const viable = [];
     emptySlots.forEach((slot) => {
-      dayTeachers.forEach((teacher) => {
+      dateTeachers.forEach((teacher) => {
         const availableWeek = (teacher.availableWeeks || []).map(Number).includes(Number(slot.week));
         if (!availableWeek) return;
         if (!teacherCanTeachDay(teacher, slot.day)) return;
+        if (!teacherCanTeachDate(teacher, slot.week, slot.day, data)) return;
         if (teacherBusyAt(schedule, teacher.teacherId, slot)) return;
         if (sameSubjectOnDay(schedule, slot, subject)) return;
         viable.push({ slot, teacher });
@@ -389,6 +422,18 @@
           "error",
           "TEACHER_DAY_LIMIT",
           `${teacherSubjectLabel(teacherInfo, [lesson.subject])} 不在${dayLabel(day)}可授課名單中。`,
+          [lessonId]
+        );
+      } else if (!teacherCanTeachDate(teacherInfo, week, day, data)) {
+        pushIssue(
+          issues,
+          "error",
+          "TEACHER_DATE_LIMIT",
+          `${teacherSubjectLabel(teacherInfo, [lesson.subject])} 在第 ${week} 週 ${dayLabel(day)}（${slotDateLabel(
+            week,
+            day,
+            data
+          )}）設定為不可排課日期。`,
           [lessonId]
         );
       }
@@ -591,7 +636,7 @@
             "CLASS_EMPTY_BLOCKS",
             `${classInfo.className} 尚有 ${emptySlots.length} 個空白連堂區塊；未排滿科目：${missingText}。`,
             [],
-            `空白區塊包含：${slotText}${emptySlots.length > 5 ? "等" : ""}。原因可先看上方 QUOTA_MISMATCH 的診斷；通常與可授課教師、授課週次、授課星期、同班同科同師規則，或可用空白時段不足有關。`
+            `空白區塊包含：${slotText}${emptySlots.length > 5 ? "等" : ""}。原因可先看上方 QUOTA_MISMATCH 的診斷；通常與可授課教師、授課週次、授課星期、不可排課日期、同班同科同師規則，或可用空白時段不足有關。`
           );
         }
       });
@@ -627,5 +672,6 @@
     formatSlot,
     teacherCanTeachClass,
     teacherCanTeachDay,
+    teacherCanTeachDate,
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1,5 +1,5 @@
 (function (global) {
-  const APP_BUILD = "20260602-2";
+  const APP_BUILD = "20260616-1";
 
   const DAYS = [
     { id: 1, label: "星期一", short: "一" },
@@ -35,6 +35,7 @@
       "assignedClasses",
       "teacherPosition",
       "availableDays",
+      "unavailableDates",
     ],
     Class_Settings: ["classId", "grade", "className", "socialMode", "manualSocialSubjects", "note"],
     Course_Quota: ["grade", "subject", "targetPeriods", "doublePeriodRequired", "roomType", "roomNeedCount"],
@@ -91,6 +92,7 @@
     assignedClasses: "授課班級",
     teacherPosition: "教師職位",
     availableDays: "可授課星期",
+    unavailableDates: "不可排課日期",
     availableWeeks: "可授課週次",
     maxWeeklyPeriods: "每週節數上限",
     note: "備註",
@@ -471,6 +473,14 @@
     return `${date.getMonth() + 1}/${date.getDate()}`;
   }
 
+  function dateKey(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
   function getScheduleStartDate(data) {
     const value = getSetting(data, "scheduleStartDate", "2026-07-13");
     const date = new Date(`${value}T00:00:00`);
@@ -510,5 +520,6 @@
     getWeekDateRange,
     getDayDate,
     formatMonthDay,
+    dateKey,
   };
 })(typeof window !== "undefined" ? window : globalThis);

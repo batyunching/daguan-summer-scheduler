@@ -104,12 +104,27 @@
     return availableDaysForTeacher(teacher).includes(Number(day));
   }
 
-  function teacherCanTeach(teacher, subject, week, classId, day) {
+  function teacherUnavailableDateKeys(teacher) {
+    return new Set((teacher?.unavailableDates || []).map(String).filter(Boolean));
+  }
+
+  function slotDateKey(week, day, data) {
+    return global.DgConfig.dateKey(global.DgConfig.getDayDate(week, day, data));
+  }
+
+  function teacherCanTeachDate(teacher, week, day, data) {
+    if (!teacher || !week || !day) return true;
+    const key = slotDateKey(week, day, data);
+    return !teacherUnavailableDateKeys(teacher).has(key);
+  }
+
+  function teacherCanTeach(teacher, subject, week, classId, day, data) {
     return (
       teacher &&
       (teacher.subjects || []).includes(subject) &&
       (teacher.availableWeeks || []).map(Number).includes(Number(week)) &&
       (!day || teacherCanTeachDay(teacher, day)) &&
+      (!day || teacherCanTeachDate(teacher, week, day, data)) &&
       teacherCanTeachClass(teacher, classId)
     );
   }
@@ -147,17 +162,17 @@
     const assignedTeacherId = assignedTeacherForClassSubject(schedule, classId, subject, ignoreIds);
     if (assignedTeacherId) {
       const teacher = (data.teachers || []).find((item) => item.teacherId === assignedTeacherId);
-      return teacherCanTeach(teacher, subject, week, classId, day) ? assignedTeacherId : "";
+      return teacherCanTeach(teacher, subject, week, classId, day, data) ? assignedTeacherId : "";
     }
 
     if (preferredTeacherId) {
       const teacher = (data.teachers || []).find((item) => item.teacherId === preferredTeacherId);
-      if (teacherCanTeach(teacher, subject, week, classId, day)) return preferredTeacherId;
+      if (teacherCanTeach(teacher, subject, week, classId, day, data)) return preferredTeacherId;
     }
 
     const load = global.DgAiOptimizer.teacherLoadMap(schedule);
     return (data.teachers || [])
-      .filter((teacher) => teacherCanTeach(teacher, subject, week, classId, day))
+      .filter((teacher) => teacherCanTeach(teacher, subject, week, classId, day, data))
       .slice()
       .sort((a, b) => {
         const weeklyA = weeklyLoad(schedule, a.teacherId, week);
@@ -486,13 +501,26 @@
       return `剩餘空白區塊在${emptyDays}，但「${task.subject}」教師的可授課星期不符合。`;
     }
 
+    const dateTeachers = dayTeachers.filter((teacher) =>
+      emptySlots.some((slot) => teacherCanTeachDate(teacher, slot.week, slot.day, data))
+    );
+    if (!dateTeachers.length) {
+      const emptyDates = Array.from(
+        new Set(emptySlots.map((slot) => global.DgConfig.formatMonthDay(global.DgConfig.getDayDate(slot.week, slot.day, data))))
+      )
+        .slice(0, 8)
+        .join("、");
+      return `剩餘空白日期 ${emptyDates} 都落在「${task.subject}」教師的不可排課日期，請調整教師設定或改排其他日期。`;
+    }
+
     let occupiedByTeacher = 0;
     let blockedBySameSubjectDay = 0;
     let hardErrorSample = "";
     for (const slot of emptySlots) {
-      for (const teacher of dayTeachers) {
+      for (const teacher of dateTeachers) {
         if (!(teacher.availableWeeks || []).map(Number).includes(Number(slot.week))) continue;
         if (!teacherCanTeachDay(teacher, slot.day)) continue;
+        if (!teacherCanTeachDate(teacher, slot.week, slot.day, data)) continue;
         if (teacherBusyAtSlot(schedule, teacher.teacherId, slot)) {
           occupiedByTeacher += 1;
           continue;

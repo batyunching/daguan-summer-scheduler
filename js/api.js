@@ -102,6 +102,48 @@
     return Array.from(new Set(splitList(value).map(parseDay).filter(Boolean))).sort((a, b) => a - b);
   }
 
+  function normalizeDateKey(year, month, day) {
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.getFullYear() !== Number(year) ||
+      date.getMonth() !== Number(month) - 1 ||
+      date.getDate() !== Number(day)
+    ) {
+      return "";
+    }
+    return global.DgConfig.dateKey(date);
+  }
+
+  function parseDateValue(value, baseYear) {
+    const original = asText(value);
+    if (!original) return "";
+    const text = original
+      .replace(/[年月]/g, "/")
+      .replace(/[日號]/g, "")
+      .replace(/[．.-]/g, "/")
+      .replace(/／/g, "/")
+      .replace(/\s+.*/, "")
+      .trim();
+    let match = text.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    if (match) return normalizeDateKey(match[1], match[2], match[3]);
+    match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (match) return normalizeDateKey(match[3], match[1], match[2]);
+    match = text.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (match) return normalizeDateKey(baseYear, match[1], match[2]);
+    return "";
+  }
+
+  function scheduleBaseYear(data) {
+    const start = global.DgConfig.getSetting(data, "scheduleStartDate", "2026-07-13");
+    const key = parseDateValue(start, 2026);
+    return key ? Number(key.slice(0, 4)) : 2026;
+  }
+
+  function parseDateList(value, baseYear) {
+    return Array.from(new Set(splitList(value).map((item) => parseDateValue(item, baseYear)).filter(Boolean))).sort();
+  }
+
   function parseNumber(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
@@ -120,6 +162,7 @@
         .find((candidateRows) => Array.isArray(candidateRows));
       if (rows) data[key] = rows.map(normalizeRow);
     });
+    const baseYear = scheduleBaseYear(data);
 
     data.users = data.users.map((row) => ({
       ...row,
@@ -140,6 +183,7 @@
       assignedClasses: splitClassList(row.assignedClasses),
       teacherPosition: normalizeTeacherPosition(row.teacherPosition),
       availableDays: parseDayList(row.availableDays),
+      unavailableDates: parseDateList(row.unavailableDates, baseYear),
       availableWeeks: splitList(row.availableWeeks).map((week) => parseNumber(week, 0)).filter(Boolean),
       maxWeeklyPeriods: parseNumber(row.maxWeeklyPeriods, 20),
     }));
