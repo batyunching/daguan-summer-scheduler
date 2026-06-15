@@ -33,6 +33,7 @@ const SHEET_DEFINITIONS = {
       assignedClasses: "授課班級",
       teacherPosition: "教師職位",
       availableDays: "可授課星期",
+      unavailableDates: "不可排課日期",
     },
   },
   Class_Settings: {
@@ -259,7 +260,8 @@ function initializeSheets_(forceHeaders) {
     } else {
       const firstRow = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getValues()[0];
       const emptyHeader = firstRow.every((cell) => cell === "");
-      if (emptyHeader) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      const missingHeader = headers.some((header) => !firstRow.includes(header));
+      if (emptyHeader || missingHeader) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     }
   });
   return {
