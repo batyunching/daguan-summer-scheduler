@@ -29,7 +29,6 @@ const SHEET_DEFINITIONS = {
       subjects: "可授科目",
       availableWeeks: "可授課週次",
       maxWeeklyPeriods: "每週節數上限",
-      note: "備註",
       assignedClasses: "授課班級",
       teacherPosition: "教師職位",
       availableDays: "可授課星期",
@@ -253,8 +252,7 @@ function initializeSheets_(forceHeaders) {
 
     const headers = fieldLabels_(sheetId);
     if (forceHeaders) {
-      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sheet.setFrozenRows(1);
+      rewriteSheetByHeaders_(sheet, sheetId);
     } else if (sheet.getLastRow() === 0) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.setFrozenRows(1);
@@ -262,7 +260,12 @@ function initializeSheets_(forceHeaders) {
       const firstRow = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getValues()[0];
       const emptyHeader = firstRow.every((cell) => cell === "");
       const missingHeader = headers.some((header) => !firstRow.includes(header));
-      if (emptyHeader || missingHeader) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      if (emptyHeader) {
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+        sheet.setFrozenRows(1);
+      } else if (missingHeader) {
+        rewriteSheetByHeaders_(sheet, sheetId);
+      }
     }
   });
   return {
@@ -274,6 +277,37 @@ function initializeSheets_(forceHeaders) {
 
 function localizeHeaders_() {
   return initializeSheets_(true);
+}
+
+function rewriteSheetByHeaders_(sheet, sheetId) {
+  const keys = fieldKeys_(sheetId);
+  const labels = fieldLabels_(sheetId);
+  const lastRow = sheet.getLastRow();
+  const lastCol = Math.max(sheet.getLastColumn(), labels.length);
+  const oldHeaders = lastRow
+    ? sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map((header) => FIELD_TO_KEY[String(header)] || String(header))
+    : [];
+  const oldIndexByKey = {};
+  oldHeaders.forEach((key, index) => {
+    if (key && oldIndexByKey[key] === undefined) oldIndexByKey[key] = index;
+  });
+
+  const nextRows = [];
+  if (lastRow > 1) {
+    const oldRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    oldRows.forEach((row) => {
+      if (!row.some((cell) => cell !== "")) return;
+      nextRows.push(keys.map((key) => {
+        const oldIndex = oldIndexByKey[key];
+        return oldIndex === undefined ? "" : row[oldIndex];
+      }));
+    });
+  }
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, labels.length).setValues([labels]);
+  if (nextRows.length) sheet.getRange(2, 1, nextRows.length, labels.length).setValues(nextRows);
+  sheet.setFrozenRows(1);
 }
 
 function readAllTables_(sheetNames) {
