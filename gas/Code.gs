@@ -34,6 +34,7 @@ const SHEET_DEFINITIONS = {
       teacherPosition: "教師職位",
       availableDays: "可授課星期",
       unavailableDates: "不可排課日期",
+      schedulePeriods: "排課節次",
     },
   },
   Class_Settings: {

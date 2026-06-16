@@ -57,7 +57,7 @@ https://script.google.com/macros/s/你的部署ID/exec?action=initializeSheets
 
 正式上線建議改用 Google OAuth 或學校既有登入機制。
 
-`教師設定` 會包含「教師職位」「可授課星期」與「不可排課日期」欄位。教師職位可填 `組長`、`導師`、`專任`；可授課星期可填 `1,2,4,5` 或 `星期一,星期二,星期四,星期五`，留空代表週一到週五都可排；不可排課日期可填 `7/15,7/22` 或 `2026-07-15,2026-07-22`，留空代表沒有特定日期限制。若舊表尚未出現新欄位，請更新 `Code.gs` 後執行 `action=initializeSheets&forceHeaders=true` 或 `action=localizeHeaders`，再於最後欄位填入設定。
+`教師設定` 會包含「教師職位」「可授課星期」「不可排課日期」與「排課節次」欄位。教師職位可填 `組長`、`導師`、`專任`；可授課星期可填 `1,2,4,5` 或 `星期一,星期二,星期四,星期五`，留空代表週一到週五都可排；不可排課日期可填 `7/15,7/22` 或 `2026-07-15,2026-07-22`，留空代表沒有特定日期限制；排課節次可填 `1,2,3,4` 或 `3,4`，留空代表第 1-4 節都可排，若填 `3,4` 則只能排入第 3-4 節。若舊表尚未出現新欄位，請更新 `Code.gs` 後執行 `action=initializeSheets&forceHeaders=true` 或 `action=localizeHeaders`，再於最後欄位填入設定。
 
 `課表資料庫` 會包含「管理者同意連四」欄位。這個欄位由前端調課二次確認自動寫入，用來記錄同班同科同一天 4 節的管理者核准例外。若舊表尚未出現此欄位，請更新 `Code.gs` 後執行 `action=initializeSheets&forceHeaders=true` 或 `action=localizeHeaders`。
 
