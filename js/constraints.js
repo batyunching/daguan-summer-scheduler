@@ -130,14 +130,38 @@
     return !teacherUnavailableDateKeys(teacher).has(slotDateKey(week, day, data));
   }
 
-  function teachersForSubject(data, subject, classId, week, day) {
+  function schedulePeriodsForTeacher(teacher) {
+    const periods = (teacher?.schedulePeriods || [])
+      .map(Number)
+      .filter((period) => Number.isFinite(period) && period >= 1 && period <= 4);
+    return periods.length ? periods : [1, 2, 3, 4];
+  }
+
+  function blockPeriods(blockStart) {
+    return global.DgConfig.blocks.find((block) => Number(block.start) === Number(blockStart))?.periods || [Number(blockStart)];
+  }
+
+  function teacherCanTeachBlock(teacher, blockStart) {
+    if (!teacher || !blockStart) return true;
+    const allowed = schedulePeriodsForTeacher(teacher);
+    return blockPeriods(blockStart).every((period) => allowed.includes(Number(period)));
+  }
+
+  function schedulePeriodsText(teacher) {
+    return schedulePeriodsForTeacher(teacher)
+      .map((period) => `第 ${period} 節`)
+      .join("、");
+  }
+
+  function teachersForSubject(data, subject, classId, week, day, blockStart) {
     return (data.teachers || []).filter((teacher) => {
       const canTeachSubject = (teacher.subjects || []).includes(subject);
       const canTeachClass = teacherCanTeachClass(teacher, classId);
       const canTeachWeek = !week || (teacher.availableWeeks || []).map(Number).includes(Number(week));
       const canTeachDay = !day || teacherCanTeachDay(teacher, day);
       const canTeachDate = !day || teacherCanTeachDate(teacher, week, day, data);
-      return canTeachSubject && canTeachClass && canTeachWeek && canTeachDay && canTeachDate;
+      const canTeachBlock = !blockStart || teacherCanTeachBlock(teacher, blockStart);
+      return canTeachSubject && canTeachClass && canTeachWeek && canTeachDay && canTeachDate && canTeachBlock;
     });
   }
 
@@ -262,13 +286,24 @@
       return `剩餘空白日期 ${emptyDates} 都落在「${subject}」教師的不可排課日期，請調整教師設定或改排其他日期。`;
     }
 
+    const blockTeachers = dateTeachers.filter((teacher) =>
+      emptySlots.some((slot) => teacherCanTeachBlock(teacher, slot.blockStart))
+    );
+    if (!blockTeachers.length) {
+      const emptyBlocks = Array.from(new Set(emptySlots.map((slot) => blockLabel(slot.blockStart))))
+        .slice(0, 4)
+        .join("、");
+      return `剩餘空白區塊為${emptyBlocks}，但「${subject}」可用教師的排課節次不符合。`;
+    }
+
     const viable = [];
     emptySlots.forEach((slot) => {
-      dateTeachers.forEach((teacher) => {
+      blockTeachers.forEach((teacher) => {
         const availableWeek = (teacher.availableWeeks || []).map(Number).includes(Number(slot.week));
         if (!availableWeek) return;
         if (!teacherCanTeachDay(teacher, slot.day)) return;
         if (!teacherCanTeachDate(teacher, slot.week, slot.day, data)) return;
+        if (!teacherCanTeachBlock(teacher, slot.blockStart)) return;
         if (teacherBusyAt(schedule, teacher.teacherId, slot)) return;
         if (sameSubjectOnDay(schedule, slot, subject)) return;
         viable.push({ slot, teacher });
@@ -434,6 +469,16 @@
             day,
             data
           )}）設定為不可排課日期。`,
+          [lessonId]
+        );
+      } else if (!teacherCanTeachBlock(teacherInfo, blockStart)) {
+        pushIssue(
+          issues,
+          "error",
+          "TEACHER_PERIOD_LIMIT",
+          `${teacherSubjectLabel(teacherInfo, [lesson.subject])} 的排課節次只允許${schedulePeriodsText(
+            teacherInfo
+          )}，不可排在${blockLabel(blockStart)}。`,
           [lessonId]
         );
       }
@@ -636,7 +681,7 @@
             "CLASS_EMPTY_BLOCKS",
             `${classInfo.className} 尚有 ${emptySlots.length} 個空白連堂區塊；未排滿科目：${missingText}。`,
             [],
-            `空白區塊包含：${slotText}${emptySlots.length > 5 ? "等" : ""}。原因可先看上方 QUOTA_MISMATCH 的診斷；通常與可授課教師、授課週次、授課星期、不可排課日期、同班同科同師規則，或可用空白時段不足有關。`
+            `空白區塊包含：${slotText}${emptySlots.length > 5 ? "等" : ""}。原因可先看上方 QUOTA_MISMATCH 的診斷；通常與可授課教師、授課週次、授課星期、不可排課日期、排課節次、同班同科同師規則，或可用空白時段不足有關。`
           );
         }
       });
@@ -673,5 +718,6 @@
     teacherCanTeachClass,
     teacherCanTeachDay,
     teacherCanTeachDate,
+    teacherCanTeachBlock,
   };
 })(typeof window !== "undefined" ? window : globalThis);

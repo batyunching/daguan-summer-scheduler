@@ -1,5 +1,5 @@
 (function (global) {
-  const APP_BUILD = "20260616-1";
+  const APP_BUILD = "20260616-4";
 
   const DAYS = [
     { id: 1, label: "星期一", short: "一" },
@@ -36,6 +36,7 @@
       "teacherPosition",
       "availableDays",
       "unavailableDates",
+      "schedulePeriods",
     ],
     Class_Settings: ["classId", "grade", "className", "socialMode", "manualSocialSubjects", "note"],
     Course_Quota: ["grade", "subject", "targetPeriods", "doublePeriodRequired", "roomType", "roomNeedCount"],
@@ -93,6 +94,7 @@
     teacherPosition: "教師職位",
     availableDays: "可授課星期",
     unavailableDates: "不可排課日期",
+    schedulePeriods: "排課節次",
     availableWeeks: "可授課週次",
     maxWeeklyPeriods: "每週節數上限",
     note: "備註",

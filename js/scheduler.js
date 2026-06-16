@@ -118,13 +118,31 @@
     return !teacherUnavailableDateKeys(teacher).has(key);
   }
 
-  function teacherCanTeach(teacher, subject, week, classId, day, data) {
+  function schedulePeriodsForTeacher(teacher) {
+    const periods = (teacher?.schedulePeriods || [])
+      .map(Number)
+      .filter((period) => Number.isFinite(period) && period >= 1 && period <= 4);
+    return periods.length ? periods : [1, 2, 3, 4];
+  }
+
+  function blockPeriods(blockStart) {
+    return global.DgConfig.blocks.find((block) => Number(block.start) === Number(blockStart))?.periods || [Number(blockStart)];
+  }
+
+  function teacherCanTeachBlock(teacher, blockStart) {
+    if (!teacher || !blockStart) return true;
+    const allowed = schedulePeriodsForTeacher(teacher);
+    return blockPeriods(blockStart).every((period) => allowed.includes(Number(period)));
+  }
+
+  function teacherCanTeach(teacher, subject, week, classId, day, data, blockStart) {
     return (
       teacher &&
       (teacher.subjects || []).includes(subject) &&
       (teacher.availableWeeks || []).map(Number).includes(Number(week)) &&
       (!day || teacherCanTeachDay(teacher, day)) &&
       (!day || teacherCanTeachDate(teacher, week, day, data)) &&
+      (!blockStart || teacherCanTeachBlock(teacher, blockStart)) &&
       teacherCanTeachClass(teacher, classId)
     );
   }
@@ -158,21 +176,21 @@
     );
   }
 
-  function chooseTeacher(data, classId, subject, week, schedule, preferredTeacherId, ignoreIds, day) {
+  function chooseTeacher(data, classId, subject, week, schedule, preferredTeacherId, ignoreIds, day, blockStart) {
     const assignedTeacherId = assignedTeacherForClassSubject(schedule, classId, subject, ignoreIds);
     if (assignedTeacherId) {
       const teacher = (data.teachers || []).find((item) => item.teacherId === assignedTeacherId);
-      return teacherCanTeach(teacher, subject, week, classId, day, data) ? assignedTeacherId : "";
+      return teacherCanTeach(teacher, subject, week, classId, day, data, blockStart) ? assignedTeacherId : "";
     }
 
     if (preferredTeacherId) {
       const teacher = (data.teachers || []).find((item) => item.teacherId === preferredTeacherId);
-      if (teacherCanTeach(teacher, subject, week, classId, day, data)) return preferredTeacherId;
+      if (teacherCanTeach(teacher, subject, week, classId, day, data, blockStart)) return preferredTeacherId;
     }
 
     const load = global.DgAiOptimizer.teacherLoadMap(schedule);
     return (data.teachers || [])
-      .filter((teacher) => teacherCanTeach(teacher, subject, week, classId, day, data))
+      .filter((teacher) => teacherCanTeach(teacher, subject, week, classId, day, data, blockStart))
       .slice()
       .sort((a, b) => {
         const weeklyA = weeklyLoad(schedule, a.teacherId, week);
@@ -366,7 +384,8 @@
         schedule,
         task.fixedTeacherId || task.preferredTeacherId,
         undefined,
-        slot.day
+        slot.day,
+        slot.blockStart
       );
       if (!teacherId) return;
       const candidate = normalizeLesson(
@@ -419,7 +438,8 @@
           schedule.filter((lesson) => lesson.id !== lessonToMove.id),
           task.fixedTeacherId || task.preferredTeacherId,
           undefined,
-          sourceSlot.day
+          sourceSlot.day,
+          sourceSlot.blockStart
         );
         if (!teacherForTask) continue;
 
@@ -513,14 +533,25 @@
       return `剩餘空白日期 ${emptyDates} 都落在「${task.subject}」教師的不可排課日期，請調整教師設定或改排其他日期。`;
     }
 
+    const blockTeachers = dateTeachers.filter((teacher) =>
+      emptySlots.some((slot) => teacherCanTeachBlock(teacher, slot.blockStart))
+    );
+    if (!blockTeachers.length) {
+      const emptyBlocks = Array.from(new Set(emptySlots.map((slot) => global.DgConstraints.blockLabel(slot.blockStart))))
+        .slice(0, 4)
+        .join("、");
+      return `剩餘空白區塊為${emptyBlocks}，但「${task.subject}」教師的排課節次不符合，請調整「排課節次」或改排其他節次。`;
+    }
+
     let occupiedByTeacher = 0;
     let blockedBySameSubjectDay = 0;
     let hardErrorSample = "";
     for (const slot of emptySlots) {
-      for (const teacher of dateTeachers) {
+      for (const teacher of blockTeachers) {
         if (!(teacher.availableWeeks || []).map(Number).includes(Number(slot.week))) continue;
         if (!teacherCanTeachDay(teacher, slot.day)) continue;
         if (!teacherCanTeachDate(teacher, slot.week, slot.day, data)) continue;
+        if (!teacherCanTeachBlock(teacher, slot.blockStart)) continue;
         if (teacherBusyAtSlot(schedule, teacher.teacherId, slot)) {
           occupiedByTeacher += 1;
           continue;

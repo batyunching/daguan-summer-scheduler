@@ -102,6 +102,16 @@
     return Array.from(new Set(splitList(value).map(parseDay).filter(Boolean))).sort((a, b) => a - b);
   }
 
+  function parsePeriodList(value) {
+    return Array.from(
+      new Set(
+        splitList(value)
+          .map((item) => Number(asText(item).replace(/[第節]/g, "")))
+          .filter((number) => Number.isFinite(number) && number >= 1 && number <= 4)
+      )
+    ).sort((a, b) => a - b);
+  }
+
   function normalizeDateKey(year, month, day) {
     const date = new Date(Number(year), Number(month) - 1, Number(day));
     if (
@@ -184,6 +194,7 @@
       teacherPosition: normalizeTeacherPosition(row.teacherPosition),
       availableDays: parseDayList(row.availableDays),
       unavailableDates: parseDateList(row.unavailableDates, baseYear),
+      schedulePeriods: parsePeriodList(row.schedulePeriods),
       availableWeeks: splitList(row.availableWeeks).map((week) => parseNumber(week, 0)).filter(Boolean),
       maxWeeklyPeriods: parseNumber(row.maxWeeklyPeriods, 20),
     }));
