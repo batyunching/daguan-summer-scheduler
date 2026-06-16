@@ -1,5 +1,5 @@
 (function (global) {
-  const APP_BUILD = "20260616-4";
+  const APP_BUILD = "20260617-1";
 
   const DAYS = [
     { id: 1, label: "星期一", short: "一" },
@@ -31,7 +31,6 @@
       "subjects",
       "availableWeeks",
       "maxWeeklyPeriods",
-      "note",
       "assignedClasses",
       "teacherPosition",
       "availableDays",
@@ -186,7 +185,6 @@
         teacherPosition: "導師",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 18,
-        note: "可支援國二與國三",
       },
       {
         teacherId: "T102",
@@ -197,7 +195,6 @@
         teacherPosition: "專任",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 16,
-        note: "",
       },
       {
         teacherId: "T201",
@@ -208,7 +205,6 @@
         teacherPosition: "專任",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 18,
-        note: "",
       },
       {
         teacherId: "T202",
@@ -219,7 +215,6 @@
         teacherPosition: "導師",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 16,
-        note: "",
       },
       {
         teacherId: "T301",
@@ -230,7 +225,6 @@
         teacherPosition: "專任",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 20,
-        note: "",
       },
       {
         teacherId: "T302",
@@ -241,7 +235,6 @@
         teacherPosition: "導師",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 18,
-        note: "",
       },
       {
         teacherId: "T401",
@@ -252,7 +245,6 @@
         teacherPosition: "組長",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 18,
-        note: "可用實驗室",
       },
       {
         teacherId: "T402",
@@ -263,7 +255,6 @@
         teacherPosition: "專任",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 16,
-        note: "可用實驗室",
       },
       {
         teacherId: "T501",
@@ -274,7 +265,6 @@
         teacherPosition: "導師",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 14,
-        note: "社會科：公民",
       },
       {
         teacherId: "T502",
@@ -285,7 +275,6 @@
         teacherPosition: "專任",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 14,
-        note: "社會科：歷史",
       },
       {
         teacherId: "T503",
@@ -296,7 +285,6 @@
         teacherPosition: "組長",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 14,
-        note: "社會科：地理",
       },
       {
         teacherId: "T601",
@@ -307,7 +295,6 @@
         teacherPosition: "專任",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 10,
-        note: "藝術教室",
       },
       {
         teacherId: "T701",
@@ -318,7 +305,6 @@
         teacherPosition: "專任",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 12,
-        note: "操場",
       },
       {
         teacherId: "T702",
@@ -329,7 +315,6 @@
         teacherPosition: "組長",
         availableWeeks: [1, 2, 3, 4, 5],
         maxWeeklyPeriods: 12,
-        note: "操場",
       },
     ],
     classes: [
