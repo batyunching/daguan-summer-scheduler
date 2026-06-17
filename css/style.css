@@ -432,6 +432,28 @@ h2 {
   vertical-align: -1px;
 }
 
+.conflict-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.compact-select-label {
+  display: grid;
+  gap: 4px;
+  min-width: 170px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.compact-select-label select {
+  min-height: 42px;
+  padding: 0 12px;
+}
+
 .legend-dot.locked {
   background: var(--amber);
 }
@@ -894,6 +916,12 @@ h2 {
   background: #eff6ff;
 }
 
+.conflict-item.issue-teacher-load {
+  border-color: #c7d2fe;
+  border-left-color: #4f46e5;
+  background: #eef2ff;
+}
+
 .conflict-item.issue-class {
   border-color: #bbf7d0;
   border-left-color: #15803d;
@@ -910,6 +938,12 @@ h2 {
   border-color: #ddd6fe;
   border-left-color: #7c3aed;
   background: #f5f3ff;
+}
+
+.conflict-item.issue-empty {
+  border-color: #fed7aa;
+  border-left-color: #c2410c;
+  background: #fff7ed;
 }
 
 .conflict-item.issue-room {
@@ -970,6 +1004,15 @@ h2 {
   margin-bottom: 0;
 }
 
+.conflict-filter-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .issue-kind {
   display: inline-flex;
   align-items: center;
@@ -985,6 +1028,11 @@ h2 {
   background: #dbeafe;
 }
 
+.kind-teacher-load {
+  color: #3730a3;
+  background: #e0e7ff;
+}
+
 .kind-class {
   color: #166534;
   background: #dcfce7;
@@ -998,6 +1046,11 @@ h2 {
 .kind-unplaced {
   color: #5b21b6;
   background: #ede9fe;
+}
+
+.kind-empty {
+  color: #9a3412;
+  background: #ffedd5;
 }
 
 .kind-room {
