@@ -25,7 +25,6 @@ const SHEET_DEFINITIONS = {
     fields: {
       teacherId: "教師代碼",
       teacherName: "教師姓名",
-      subjectGroup: "科目群組",
       subjects: "可授科目",
       availableWeeks: "可授課週次",
       maxWeeklyPeriods: "每週節數上限",
