@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>大觀國中暑期排課系統</title>
-    <link rel="stylesheet" href="css/style.css?v=20260617-5" />
+    <link rel="stylesheet" href="css/style.css?v=20260618-1" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -52,7 +52,7 @@
           </div>
         </div>
         <div class="account-strip">
-          <span id="buildState" class="status-pill build-pill">版本 20260617-5</span>
+          <span id="buildState" class="status-pill build-pill">版本 20260618-1</span>
           <span id="apiState" class="status-pill warning">尚未設定 GAS</span>
           <span id="currentUserLabel" class="user-label"></span>
           <button id="logoutButton" type="button" class="ghost-button">登出</button>
@@ -159,7 +159,25 @@
               <p class="eyebrow">Validation</p>
               <h2 id="conflictsTitle">衝突檢查</h2>
             </div>
-            <button id="copyConflictButton" type="button">複製檢查結果</button>
+            <div class="conflict-actions">
+              <label class="compact-select-label">
+                類型
+                <select id="conflictFilterSelect">
+                  <option value="all">全部</option>
+                  <option value="class">班級</option>
+                  <option value="teacherLoad">教師節數</option>
+                  <option value="quota">節數不足 / 未排入</option>
+                  <option value="empty">空白課表提醒</option>
+                  <option value="teacher">其他教師問題</option>
+                  <option value="room">場地</option>
+                  <option value="social">社會科</option>
+                  <option value="recommendation">最佳化建議</option>
+                </select>
+              </label>
+              <button id="dismissFilteredConflictsButton" type="button">刪去目前篩選</button>
+              <button id="restoreConflictButton" type="button">重新顯示全部</button>
+              <button id="copyConflictButton" type="button">複製檢查結果</button>
+            </div>
           </div>
           <div id="conflictList" class="conflict-list"></div>
         </section>
@@ -263,16 +281,16 @@
 
     <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-    <script src="js/config.js?v=20260617-5"></script>
-    <script src="js/api.js?v=20260617-5"></script>
-    <script src="js/auth.js?v=20260617-5"></script>
-    <script src="js/constraints.js?v=20260617-5"></script>
-    <script src="js/social-assignment.js?v=20260617-5"></script>
-    <script src="js/ai-optimizer.js?v=20260617-5"></script>
-    <script src="js/scheduler.js?v=20260617-5"></script>
-    <script src="js/dragdrop.js?v=20260617-5"></script>
-    <script src="js/version.js?v=20260617-5"></script>
-    <script src="js/exporter.js?v=20260617-5"></script>
-    <script src="js/app.js?v=20260617-5"></script>
+    <script src="js/config.js?v=20260618-1"></script>
+    <script src="js/api.js?v=20260618-1"></script>
+    <script src="js/auth.js?v=20260618-1"></script>
+    <script src="js/constraints.js?v=20260618-1"></script>
+    <script src="js/social-assignment.js?v=20260618-1"></script>
+    <script src="js/ai-optimizer.js?v=20260618-1"></script>
+    <script src="js/scheduler.js?v=20260618-1"></script>
+    <script src="js/dragdrop.js?v=20260618-1"></script>
+    <script src="js/version.js?v=20260618-1"></script>
+    <script src="js/exporter.js?v=20260618-1"></script>
+    <script src="js/app.js?v=20260618-1"></script>
   </body>
 </html>
