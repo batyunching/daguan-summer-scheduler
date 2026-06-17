@@ -1,5 +1,6 @@
 設定鍵,設定值,說明
 schoolName,大觀國中,系統顯示校名
+grade8Weeks,3,國二暑輔週數
 grade9Weeks,5,國三暑輔週數
 periodsPerDay,4,每日節數
 scheduleStartDate,2026-07-13,第一週星期一日期
