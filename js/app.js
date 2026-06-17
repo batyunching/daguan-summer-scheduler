@@ -483,7 +483,7 @@
 
     const maxWeeks =
       state.viewMode === "class"
-        ? global.DgScheduler.getGradeWeeks((classes.find((item) => item.classId === state.selectedClassId) || {}).grade)
+        ? global.DgScheduler.getGradeWeeks(classes.find((item) => item.classId === state.selectedClassId) || {})
         : Math.max(...Object.values(global.DgConfig.gradeSettings).map((item) => item.weeks));
     if (state.selectedWeek !== ALL_WEEKS_VALUE && state.selectedWeek > maxWeeks) state.selectedWeek = maxWeeks;
     els.weekSelect.innerHTML = [
@@ -522,7 +522,7 @@
 
   function selectedScheduleWeeks(classInfo) {
     const weeks = classInfo
-      ? global.DgScheduler.getGradeWeeks(classInfo.grade)
+      ? global.DgScheduler.getGradeWeeks(classInfo)
       : maxOutputWeeks();
     return Array.from({ length: weeks }, (_, index) => index + 1);
   }

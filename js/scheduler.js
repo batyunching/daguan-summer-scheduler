@@ -1,11 +1,18 @@
 (function (global) {
-  function getGradeWeeks(grade) {
-    return global.DgConfig.gradeSettings[String(grade)]?.weeks || 3;
+  function getGradeWeeks(classInfoOrGrade) {
+    if (classInfoOrGrade && typeof classInfoOrGrade === "object") {
+      const explicitWeeks = Number(classInfoOrGrade.classWeeks);
+      if (Number.isFinite(explicitWeeks) && explicitWeeks > 0) {
+        return Math.max(1, Math.min(5, Math.floor(explicitWeeks)));
+      }
+      return global.DgConfig.gradeSettings[String(classInfoOrGrade.grade)]?.weeks || 3;
+    }
+    return global.DgConfig.gradeSettings[String(classInfoOrGrade)]?.weeks || 3;
   }
 
   function allSlotsForClass(classInfo) {
     const slots = [];
-    const weeks = getGradeWeeks(classInfo.grade);
+    const weeks = getGradeWeeks(classInfo);
     for (let week = 1; week <= weeks; week += 1) {
       global.DgConfig.days.forEach((day) => {
         global.DgConfig.blocks.forEach((block) => {
@@ -152,7 +159,7 @@
   }
 
   function weeksForTeacher(classInfo, teacher) {
-    const gradeWeeks = getGradeWeeks(classInfo.grade);
+    const gradeWeeks = getGradeWeeks(classInfo);
     const available = (teacher?.availableWeeks || [])
       .map(Number)
       .filter((week) => Number.isFinite(week) && week >= 1 && week <= gradeWeeks);
@@ -266,7 +273,7 @@
   }
 
   function pushWeeklyTasks(tasks, taskBase, totalBlocks, classInfo, teacher, preservedSchedule) {
-    const gradeWeeks = getGradeWeeks(classInfo.grade);
+    const gradeWeeks = getGradeWeeks(classInfo);
     const weeklyPlan = distributeBlocksAcrossWeeks(totalBlocks, weeksForTeacher(classInfo, teacher), gradeWeeks);
     const existingByWeek = countSubjectBlocksByWeek(preservedSchedule, classInfo.classId, taskBase.subject);
 

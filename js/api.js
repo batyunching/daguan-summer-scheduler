@@ -164,6 +164,28 @@
     return String(value).trim();
   }
 
+  function fallbackWeeksForGrade(grade) {
+    return global.DgConfig.gradeSettings[String(grade)]?.weeks || 3;
+  }
+
+  function defaultWeeksForGrade(data, grade) {
+    const normalizedGrade = String(grade || "").trim();
+    const fallback = fallbackWeeksForGrade(normalizedGrade);
+    if (!normalizedGrade) return fallback;
+    return normalizeWeekCount(global.DgConfig.getSetting(data, `grade${normalizedGrade}Weeks`, fallback), fallback);
+  }
+
+  function normalizeWeekCount(value, fallback) {
+    const text = asText(value);
+    if (!text) return fallback;
+    const direct = Number(text);
+    if (Number.isFinite(direct) && direct > 0) return Math.max(1, Math.min(5, Math.floor(direct)));
+    const weeks = splitList(text)
+      .map((item) => Number(asText(item).replace(/[第週]/g, "")))
+      .filter((week) => Number.isFinite(week) && week > 0);
+    return weeks.length ? Math.max(1, Math.min(5, Math.max(...weeks))) : fallback;
+  }
+
   function normalizeTables(tables) {
     const data = global.DgConfig.cloneMockData();
     Object.entries(tableKeyMap).forEach(([sheetName, key]) => {
@@ -199,13 +221,17 @@
       maxWeeklyPeriods: parseNumber(row.maxWeeklyPeriods, 20),
     }));
 
-    data.classes = data.classes.map((row) => ({
-      ...row,
-      classId: asText(row.classId),
-      grade: String(row.grade || ""),
-      className: asText(row.className || row.classId),
-      socialMode: row.socialMode || "auto",
-    }));
+    data.classes = data.classes.map((row) => {
+      const grade = String(row.grade || "");
+      return {
+        ...row,
+        classId: asText(row.classId),
+        grade,
+        classWeeks: defaultWeeksForGrade(data, grade),
+        className: asText(row.className || row.classId),
+        socialMode: row.socialMode || "auto",
+      };
+    });
 
     data.courseQuotas = data.courseQuotas.map((row) => ({
       ...row,

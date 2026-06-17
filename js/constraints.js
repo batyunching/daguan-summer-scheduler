@@ -170,7 +170,11 @@
   }
 
   function getGradeWeeks(classInfo) {
-    return global.DgConfig.gradeSettings[String(classInfo.grade)]?.weeks || 3;
+    const explicitWeeks = Number(classInfo?.classWeeks);
+    if (Number.isFinite(explicitWeeks) && explicitWeeks > 0) {
+      return Math.max(1, Math.min(5, Math.floor(explicitWeeks)));
+    }
+    return global.DgConfig.gradeSettings[String(classInfo?.grade)]?.weeks || 3;
   }
 
   function allSlotsForClass(classInfo) {
