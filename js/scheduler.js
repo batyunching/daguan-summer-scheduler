@@ -1,4 +1,6 @@
 (function (global) {
+  const AUTO_FATIGUE_NOTE = "系統為補足目標節數，同意同班同科同天連上 4 節。";
+
   function getGradeWeeks(classInfoOrGrade) {
     if (classInfoOrGrade && typeof classInfoOrGrade === "object") {
       const explicitWeeks = Number(classInfoOrGrade.classWeeks);
@@ -377,16 +379,57 @@
     return keep.map((lesson) => normalizeLesson(lesson, lesson.source || "manual"));
   }
 
-  function findBestPlacement(task, schedule, data) {
+  function appendNote(note, text) {
+    const current = String(note || "").trim();
+    if (!text || current.includes(text)) return current;
+    return current ? `${current}；${text}` : text;
+  }
+
+  function fatigueGroupKey(lesson) {
+    return [lesson.classId, lesson.week, lesson.day, lesson.subject].join("|");
+  }
+
+  function withAutoFatigueApproval(lesson) {
+    return {
+      ...lesson,
+      fatigueApproved: true,
+      note: appendNote(lesson.note, AUTO_FATIGUE_NOTE),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  function applyFatigueApprovals(schedule, approvedLessons) {
+    const approvedKeys = new Set(
+      (approvedLessons || []).filter((lesson) => lesson?.fatigueApproved).map(fatigueGroupKey)
+    );
+    if (!approvedKeys.size) return schedule;
+    return (schedule || []).map((lesson) =>
+      approvedKeys.has(fatigueGroupKey(lesson)) ? withAutoFatigueApproval(lesson) : lesson
+    );
+  }
+
+  function pushScheduledLesson(schedule, lesson) {
+    if (lesson?.fatigueApproved) {
+      const approved = applyFatigueApprovals(schedule, [lesson]);
+      schedule.splice(0, schedule.length, ...approved);
+      schedule.push(withAutoFatigueApproval(lesson));
+      return;
+    }
+    schedule.push(lesson);
+  }
+
+  function findBestPlacement(task, schedule, data, options) {
     const classInfo = (data.classes || []).find((item) => String(item.classId) === String(task.classId));
     if (!classInfo) return null;
+    const allowFatigue = Boolean(options?.allowClassSubjectFatigue);
 
     let best = null;
     allSlotsForClass(classInfo)
       .filter((slot) => !task.week || Number(slot.week) === Number(task.week))
       .forEach((slot) => {
       if (occupiedAt(schedule, slot)) return;
-      if (sameClassSubjectDay(schedule, task.classId, slot.week, slot.day, task.subject)) return;
+      const createsFatigue = sameClassSubjectDay(schedule, task.classId, slot.week, slot.day, task.subject);
+      if (createsFatigue && !allowFatigue) return;
       const teacherId = chooseTeacher(
         data,
         task.classId,
@@ -407,12 +450,17 @@
           roomType: task.roomType,
           isLocked: false,
           source: "auto",
+          fatigueApproved: createsFatigue,
+          note: createsFatigue ? AUTO_FATIGUE_NOTE : "",
         },
         "auto"
       );
-      const hardErrors = global.DgConstraints.getHardErrors([...schedule, candidate], data);
+      const candidateSchedule = createsFatigue
+        ? applyFatigueApprovals([...schedule, candidate], [candidate])
+        : [...schedule, candidate];
+      const hardErrors = global.DgConstraints.getHardErrors(candidateSchedule, data);
       if (hardErrors.length) return;
-      const score = global.DgAiOptimizer.scorePlacement(schedule, candidate, data);
+      const score = global.DgAiOptimizer.scorePlacement(schedule, candidate, data) + (createsFatigue ? 200 : 0);
       if (!best || score < best.score) {
         best = { lesson: candidate, score };
       }
@@ -420,9 +468,10 @@
     return best?.lesson || null;
   }
 
-  function tryRepairUnplaced(task, schedule, data) {
+  function tryRepairUnplaced(task, schedule, data, options) {
     const classInfo = (data.classes || []).find((item) => String(item.classId) === String(task.classId));
     if (!classInfo) return null;
+    const allowFatigue = Boolean(options?.allowClassSubjectFatigue);
     const emptySlots = allSlotsForClass(classInfo).filter((slot) => !occupiedAt(schedule, slot));
     const movableLessons = schedule.filter(
       (lesson) =>
@@ -455,12 +504,28 @@
         if (!teacherForTask) continue;
 
         const next = schedule.filter((lesson) => lesson.id !== lessonToMove.id);
-        if (sameClassSubjectDay(next, task.classId, sourceSlot.week, sourceSlot.day, task.subject)) continue;
-        if (sameClassSubjectDay(next, lessonToMove.classId, emptySlot.week, emptySlot.day, lessonToMove.subject)) continue;
+        const insertedCreatesFatigue = sameClassSubjectDay(
+          next,
+          task.classId,
+          sourceSlot.week,
+          sourceSlot.day,
+          task.subject
+        );
+        const movedCreatesFatigue = sameClassSubjectDay(
+          next,
+          lessonToMove.classId,
+          emptySlot.week,
+          emptySlot.day,
+          lessonToMove.subject
+        );
+        if (insertedCreatesFatigue && !allowFatigue) continue;
+        if (movedCreatesFatigue && !allowFatigue) continue;
 
         const movedLesson = {
           ...lessonToMove,
           ...emptySlot,
+          fatigueApproved: movedCreatesFatigue,
+          note: movedCreatesFatigue ? appendNote(lessonToMove.note, AUTO_FATIGUE_NOTE) : lessonToMove.note,
           updatedAt: new Date().toISOString(),
         };
         const insertedLesson = normalizeLesson(
@@ -471,12 +536,17 @@
             roomType: task.roomType,
             source: "auto",
             isLocked: false,
+            fatigueApproved: insertedCreatesFatigue,
+            note: insertedCreatesFatigue ? AUTO_FATIGUE_NOTE : "",
           },
           "auto"
         );
-        next.push(movedLesson, insertedLesson);
-        if (!global.DgConstraints.getHardErrors(next, data).length) {
-          return next;
+        const candidateSchedule = applyFatigueApprovals(
+          [...next, movedLesson, insertedLesson],
+          [movedLesson, insertedLesson]
+        );
+        if (!global.DgConstraints.getHardErrors(candidateSchedule, data).length) {
+          return candidateSchedule;
         }
       }
     }
@@ -631,13 +701,23 @@
     tasks.forEach((task) => {
       const lesson = findBestPlacement(task, schedule, data);
       if (lesson) {
-        schedule.push(lesson);
+        pushScheduledLesson(schedule, lesson);
       } else {
         const repaired = tryRepairUnplaced(task, schedule, data);
         if (repaired) {
           schedule.splice(0, schedule.length, ...repaired);
         } else {
-          unplaced.push({ ...task, reason: explainUnplacedTask(task, schedule, data) });
+          const fatigueLesson = findBestPlacement(task, schedule, data, { allowClassSubjectFatigue: true });
+          if (fatigueLesson) {
+            pushScheduledLesson(schedule, fatigueLesson);
+          } else {
+            const fatigueRepair = tryRepairUnplaced(task, schedule, data, { allowClassSubjectFatigue: true });
+            if (fatigueRepair) {
+              schedule.splice(0, schedule.length, ...fatigueRepair);
+            } else {
+              unplaced.push({ ...task, reason: explainUnplacedTask(task, schedule, data) });
+            }
+          }
         }
       }
     });

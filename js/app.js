@@ -15,12 +15,24 @@
     unplaced: [],
     printAllWeeks: false,
     dismissedConflictKeys: new Set(),
+    conflictFilter: "all",
     undoStack: [],
     redoStack: [],
   };
 
   const ALL_WEEKS_VALUE = "all";
   const HISTORY_LIMIT = 30;
+  const CONFLICT_FILTERS = [
+    { value: "all", label: "全部" },
+    { value: "class", label: "班級" },
+    { value: "teacherLoad", label: "教師節數" },
+    { value: "quota", label: "節數不足 / 未排入" },
+    { value: "empty", label: "空白課表提醒" },
+    { value: "teacher", label: "其他教師問題" },
+    { value: "room", label: "場地" },
+    { value: "social", label: "社會科" },
+    { value: "recommendation", label: "最佳化建議" },
+  ];
   const els = {};
 
   function $(id) {
@@ -105,8 +117,25 @@
     ].join("|");
   }
 
+  function conflictFilterKey(item, prefix) {
+    if (prefix === "recommendation") return "recommendation";
+    const code = item?.code || "";
+    if (code === "TEACHER_WEEKLY_LOAD_OVER_LIMIT") return "teacherLoad";
+    if (code === "QUOTA_MISMATCH" || code === "UNPLACED_AUTO_TASK") return "quota";
+    if (code === "CLASS_EMPTY_BLOCKS") return "empty";
+    const typeInfo = issueTypeInfo(item);
+    return typeInfo.key || "general";
+  }
+
+  function matchesConflictFilter(item, prefix) {
+    if (state.conflictFilter === "all") return true;
+    return conflictFilterKey(item, prefix) === state.conflictFilter;
+  }
+
   function visibleConflictItems(items, prefix) {
-    return (items || []).filter((item) => !state.dismissedConflictKeys.has(conflictKey(item, prefix)));
+    return (items || []).filter(
+      (item) => matchesConflictFilter(item, prefix) && !state.dismissedConflictKeys.has(conflictKey(item, prefix))
+    );
   }
 
   function scheduleStateKey(schedule, unplaced) {
@@ -186,7 +215,10 @@
       "socialTable",
       "autoSocialButton",
       "conflictList",
+      "conflictFilterSelect",
       "copyConflictButton",
+      "dismissFilteredConflictsButton",
+      "restoreConflictButton",
       "versionForm",
       "versionName",
       "versionNote",
@@ -312,6 +344,16 @@
 
     els.printButton.addEventListener("click", () => printCurrentSchedule());
     els.copyConflictButton.addEventListener("click", copyConflictText);
+    els.conflictFilterSelect.addEventListener("change", () => {
+      state.conflictFilter = els.conflictFilterSelect.value;
+      renderConflicts();
+    });
+    els.dismissFilteredConflictsButton.addEventListener("click", dismissFilteredConflicts);
+    els.restoreConflictButton.addEventListener("click", () => {
+      clearDismissedConflicts();
+      renderConflicts();
+      toast("已重新顯示全部檢查項目。");
+    });
     els.versionForm.addEventListener("submit", handleCreateVersion);
     els.settingsForm.addEventListener("submit", handleSaveSettings);
     els.clearGasUrlButton.addEventListener("click", () => {
@@ -1288,8 +1330,10 @@
 
   function issueTypeInfo(issue) {
     const code = issue?.code || "";
+    if (code === "TEACHER_WEEKLY_LOAD_OVER_LIMIT") return { key: "teacher-load", label: "教師節數" };
     if (code === "UNPLACED_AUTO_TASK") return { key: "unplaced", label: "未排入" };
     if (code === "QUOTA_MISMATCH") return { key: "quota", label: "節數不足" };
+    if (code === "CLASS_EMPTY_BLOCKS") return { key: "empty", label: "空白課表" };
     if (code.startsWith("TEACHER") || code === "UNKNOWN_TEACHER") return { key: "teacher", label: "教師" };
     if (code.startsWith("CLASS") || code === "UNKNOWN_CLASS" || code === "INVALID_BLOCK_START") {
       return { key: "class", label: "班級" };
@@ -1334,6 +1378,36 @@
     }));
   }
 
+  function currentConflictEntries() {
+    refreshIssues();
+    const allIssues = [...state.issues, ...groupedUnplacedIssues()];
+    const recommendations = global.DgAiOptimizer.analyze(state.schedule, state.data);
+    return [
+      ...allIssues.map((item) => ({ item, prefix: "" })),
+      ...recommendations.map((item) => ({ item, prefix: "recommendation" })),
+    ];
+  }
+
+  function visibleFilteredConflictEntries() {
+    return currentConflictEntries().filter(
+      ({ item, prefix }) =>
+        matchesConflictFilter(item, prefix) && !state.dismissedConflictKeys.has(conflictKey(item, prefix))
+    );
+  }
+
+  function dismissFilteredConflicts() {
+    const entries = visibleFilteredConflictEntries();
+    if (!entries.length) {
+      toast("目前篩選沒有可刪去的檢查項目。");
+      return;
+    }
+    entries.forEach(({ item, prefix }) => state.dismissedConflictKeys.add(conflictKey(item, prefix)));
+    renderConflicts();
+    const label =
+      CONFLICT_FILTERS.find((filter) => filter.value === state.conflictFilter)?.label || "目前篩選";
+    toast(`已刪去「${label}」篩選中的 ${entries.length} 項。`);
+  }
+
   function handleConflictListClick(event) {
     const button = event.target.closest("[data-conflict-action]");
     if (!button) return;
@@ -1356,11 +1430,30 @@
 
   function renderConflicts() {
     refreshIssues();
+    els.conflictFilterSelect.value = state.conflictFilter;
     const allIssues = [...state.issues, ...groupedUnplacedIssues()];
     const recommendations = global.DgAiOptimizer.analyze(state.schedule, state.data);
+    const filteredIssueCount = allIssues.filter((issue) => matchesConflictFilter(issue)).length;
+    const filteredRecommendationCount = recommendations.filter((item) =>
+      matchesConflictFilter(item, "recommendation")
+    ).length;
+    const totalItems = allIssues.length + recommendations.length;
+    const filteredCount = filteredIssueCount + filteredRecommendationCount;
     const visibleIssues = visibleConflictItems(allIssues);
     const visibleRecommendations = visibleConflictItems(recommendations, "recommendation");
-    const hiddenCount = allIssues.length + recommendations.length - visibleIssues.length - visibleRecommendations.length;
+    const visibleCount = visibleIssues.length + visibleRecommendations.length;
+    const hiddenCount = filteredCount - visibleCount;
+    const filteredOutCount = totalItems - filteredCount;
+    const filterLabel =
+      CONFLICT_FILTERS.find((filter) => filter.value === state.conflictFilter)?.label || "全部";
+    const summaryHtml = `
+      <div class="conflict-filter-summary">
+        <span>目前篩選：${escapeHtml(filterLabel)}</span>
+        <span>顯示 ${visibleCount} 項</span>
+        ${filteredOutCount ? `<span>其他類型 ${filteredOutCount} 項未顯示</span>` : ""}
+        ${hiddenCount ? `<span>已刪去 ${hiddenCount} 項</span>` : ""}
+      </div>
+    `;
     const issueHtml = visibleIssues.length
       ? visibleIssues
           .map(
@@ -1421,16 +1514,18 @@
         </article>
       `
       : "";
-    els.conflictList.innerHTML = issueHtml + recommendationHtml + hiddenHtml;
+    els.conflictList.innerHTML = summaryHtml + issueHtml + recommendationHtml + hiddenHtml;
   }
 
   async function copyConflictText() {
-    refreshIssues();
-    const allIssues = [...state.issues, ...groupedUnplacedIssues()];
-    const visibleIssues = visibleConflictItems(allIssues);
-    const text = visibleIssues.length
-      ? visibleIssues
-          .map((issue) => `[${issue.level}] ${issue.code} ${issue.message}\n建議：${issueSuggestion(issue)}`)
+    const visibleEntries = visibleFilteredConflictEntries();
+    const text = visibleEntries.length
+      ? visibleEntries
+          .map(({ item, prefix }) =>
+            prefix === "recommendation"
+              ? `[recommendation] ${item.title}\n${item.body}`
+              : `[${item.level}] ${item.code} ${item.message}\n建議：${issueSuggestion(item)}`
+          )
           .join("\n\n")
       : state.dismissedConflictKeys.size
       ? "目前顯示清單沒有未刪去的檢查項目。"

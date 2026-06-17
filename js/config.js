@@ -1,5 +1,5 @@
 (function (global) {
-  const APP_BUILD = "20260617-5";
+  const APP_BUILD = "20260618-1";
 
   const DAYS = [
     { id: 1, label: "星期一", short: "一" },
