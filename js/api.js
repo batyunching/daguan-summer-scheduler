@@ -90,6 +90,13 @@
     return "專任";
   }
 
+  function normalizeMode(value) {
+    const text = asText(value).toLowerCase();
+    if (["manual", "手動", "指定", "manual_social"].includes(text)) return "manual";
+    if (["auto", "自動", "平均", "系統"].includes(text)) return "auto";
+    return text || "auto";
+  }
+
   function parseDay(value) {
     const text = asText(value).replace(/[星期週周禮拜]/g, "");
     const map = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5 };
@@ -186,6 +193,15 @@
     return weeks.length ? Math.max(1, Math.min(5, Math.max(...weeks))) : fallback;
   }
 
+  function normalizeTeacherReference(data, value) {
+    const text = asText(value);
+    if (!text) return "";
+    const teacher = (data.teachers || []).find(
+      (item) => item.teacherId === text || item.teacherName === text
+    );
+    return teacher?.teacherId || text;
+  }
+
   function normalizeTables(tables) {
     const data = global.DgConfig.cloneMockData();
     Object.entries(tableKeyMap).forEach(([sheetName, key]) => {
@@ -210,7 +226,6 @@
       ...row,
       teacherId: asText(row.teacherId),
       teacherName: asText(row.teacherName),
-      subjectGroup: asText(row.subjectGroup),
       subjects: splitList(row.subjects),
       assignedClasses: splitClassList(row.assignedClasses),
       teacherPosition: normalizeTeacherPosition(row.teacherPosition),
@@ -229,15 +244,17 @@
         grade,
         classWeeks: defaultWeeksForGrade(data, grade),
         className: asText(row.className || row.classId),
-        socialMode: row.socialMode || "auto",
+        socialMode: normalizeMode(row.socialMode),
       };
     });
 
     data.courseQuotas = data.courseQuotas.map((row) => ({
       ...row,
       grade: String(row.grade || ""),
+      subject: asText(row.subject),
       targetPeriods: parseNumber(row.targetPeriods, 0),
       doublePeriodRequired: parseBool(row.doublePeriodRequired),
+      roomType: asText(row.roomType || "普通"),
       roomNeedCount: parseNumber(row.roomNeedCount, 1),
     }));
 
@@ -259,8 +276,9 @@
     data.socialAssignments = data.socialAssignments.map((row) => ({
       ...row,
       classId: asText(row.classId),
-      teacherA: asText(row.teacherA),
-      teacherB: asText(row.teacherB),
+      mode: normalizeMode(row.mode),
+      teacherA: normalizeTeacherReference(data, row.teacherA),
+      teacherB: normalizeTeacherReference(data, row.teacherB),
     }));
 
     return data;

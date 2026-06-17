@@ -65,13 +65,14 @@
     return (schedule || []).find((lesson) => !ignore.has(lesson.id) && lessonMatchesSlot(lesson, slot));
   }
 
-  function quotaSubject(subject) {
-    return global.DgConfig.socialSubjects.includes(subject) ? "社會" : subject;
+  function quotaMatchesSubject(lessonSubject, quotaSubject) {
+    if (quotaSubject === "社會") return global.DgConfig.socialSubjects.includes(lessonSubject);
+    return lessonSubject === quotaSubject;
   }
 
   function countPeriods(schedule, classId, subject) {
     return (schedule || [])
-      .filter((lesson) => String(lesson.classId) === String(classId) && quotaSubject(lesson.subject) === subject)
+      .filter((lesson) => String(lesson.classId) === String(classId) && quotaMatchesSubject(lesson.subject, subject))
       .reduce((sum) => sum + 2, 0);
   }
 
@@ -331,7 +332,10 @@
         }
 
         const targetBlocks = Math.max(0, Math.floor(Number(quota.targetPeriods) / 2));
-        const teacher = chooseTeacherForSubject(data, classInfo, quota.subject, preservedSchedule, "", plannedLoad);
+        const preferredTeacherId = global.DgConfig.socialSubjects.includes(quota.subject)
+          ? global.DgSocialAssignment.teacherForSubject(data.socialAssignments, classInfo.classId, quota.subject)
+          : "";
+        const teacher = chooseTeacherForSubject(data, classInfo, quota.subject, preservedSchedule, preferredTeacherId, plannedLoad);
         pushWeeklyTasks(
           tasks,
           {
@@ -339,7 +343,7 @@
             grade: classInfo.grade,
             subject: quota.subject,
             roomType: quota.roomType,
-            preferredTeacherId: "",
+            preferredTeacherId,
             difficulty: quota.roomType === "普通" ? 1 : 3,
             priority: Number(quota.targetPeriods) || 0,
           },
@@ -480,7 +484,7 @@
   }
 
   function teacherLabel(teacher, subject) {
-    const subjectText = subject || teacher?.subjectGroup || (teacher?.subjects || []).join("、") || "未指定科目";
+    const subjectText = subject || (teacher?.subjects || []).join("、") || "未指定科目";
     const name = teacher?.teacherName || teacher?.teacherId || "未指定教師";
     return `${subjectText}老師 ${name}`;
   }

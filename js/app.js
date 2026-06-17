@@ -473,7 +473,10 @@
         ? teachers.filter((teacher) => teacher.teacherId === state.currentUser.teacherId)
         : teachers;
     els.teacherSelect.innerHTML = teacherOptions
-      .map((item) => `<option value="${escapeHtml(item.teacherId)}">${escapeHtml(item.teacherName)}（${escapeHtml(item.subjectGroup)}）</option>`)
+      .map((item) => {
+        const subjectText = (item.subjects || []).join("、") || "未指定科目";
+        return `<option value="${escapeHtml(item.teacherId)}">${escapeHtml(item.teacherName)}（${escapeHtml(subjectText)}）</option>`;
+      })
       .join("");
     els.teacherSelect.value = state.selectedTeacherId;
     els.teacherSelect.disabled = state.currentUser?.role === "teacher";
@@ -771,7 +774,7 @@
           .map(
             (teacher) => `
               <article class="teacher-preview-block">
-                <h4>${escapeHtml(teacher.subjectGroup || "")}老師 ${escapeHtml(teacher.teacherName)}</h4>
+                <h4>${escapeHtml((teacher.subjects || []).join("、") || "未指定科目")}老師 ${escapeHtml(teacher.teacherName)}</h4>
                 <div class="all-week-schedule compact-weeks">
                   ${weeks
                     .map(
@@ -1025,11 +1028,16 @@
 
   function roomForSubject(classId, subject) {
     const classInfo = (state.data.classes || []).find((item) => item.classId === classId);
-    const lookupSubject = global.DgConfig.socialSubjects.includes(subject) ? "社會" : subject;
     return (
       (state.data.courseQuotas || []).find(
-        (quota) => String(quota.grade) === String(classInfo?.grade) && quota.subject === lookupSubject
-      )?.roomType || "普通"
+        (quota) => String(quota.grade) === String(classInfo?.grade) && quota.subject === subject
+      )?.roomType ||
+      (global.DgConfig.socialSubjects.includes(subject)
+        ? (state.data.courseQuotas || []).find(
+            (quota) => String(quota.grade) === String(classInfo?.grade) && quota.subject === "社會"
+          )?.roomType
+        : "") ||
+      "普通"
     );
   }
 

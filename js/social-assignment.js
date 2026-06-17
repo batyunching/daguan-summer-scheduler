@@ -8,7 +8,6 @@
   function socialTeachers(data, subject, classId) {
     return (data.teachers || []).filter(
       (teacher) =>
-        teacher.subjectGroup === "社會" &&
         (teacher.subjects || []).includes(subject) &&
         (!classId || global.DgConstraints.teacherCanTeachClass(teacher, classId))
     );

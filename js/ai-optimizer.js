@@ -63,7 +63,7 @@
           candidate.teacherId !== teacher.teacherId &&
           subjects.some((subject) => (candidate.subjects || []).includes(subject))
       )
-      .map((candidate) => `${(candidate.subjectGroup || (candidate.subjects || []).join("、") || "未指定科目")}老師 ${candidate.teacherName || candidate.teacherId}`)
+      .map((candidate) => `${((candidate.subjects || []).join("、") || "未指定科目")}老師 ${candidate.teacherName || candidate.teacherId}`)
       .slice(0, 3)
       .join("、");
   }
@@ -84,7 +84,7 @@
         const alternativeText = alternatives
           ? `可優先檢查是否能把部分同科課程改給 ${alternatives}。`
           : "目前找不到明顯的同科替代教師，請檢查教師設定是否有其他老師可授此科與班級。";
-        const teacherLabel = `${(subjects.join("、") || teacher.subjectGroup || "未指定科目")}老師 ${teacher.teacherName}`;
+        const teacherLabel = `${(subjects.join("、") || (teacher.subjects || []).join("、") || "未指定科目")}老師 ${teacher.teacherName}`;
         recommendations.push({
           level: "warning",
           title: `${teacherLabel} 授課負荷偏高`,

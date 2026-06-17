@@ -1,6 +1,4 @@
 (function (global) {
-  const TEACHER_WEEKLY_WARNING_PERIODS = 12;
-
   function indexBy(items, key) {
     return Object.fromEntries((items || []).map((item) => [item[key], item]));
   }
@@ -31,8 +29,7 @@
 
   function teacherSubjectLabel(teacher, subjects) {
     const subjectList = Array.from(new Set((subjects || []).filter(Boolean)));
-    const subjectText =
-      subjectList.join("、") || teacher?.subjectGroup || (teacher?.subjects || []).join("、") || "未指定科目";
+    const subjectText = subjectList.join("、") || (teacher?.subjects || []).join("、") || "未指定科目";
     const name = teacher?.teacherName || teacher?.teacherId || "未指定教師";
     return `${subjectText}老師 ${name}`;
   }
@@ -235,7 +232,7 @@
   }
 
   function quotaSubjectOptions(data, classInfo, quota) {
-    if (!global.DgConfig.socialSubjects.includes(quota.subject) && quota.subject !== "社會") return [quota.subject];
+    if (quota.subject !== "社會") return [quota.subject];
     const assigned = getSocialSubjectsForClass(data.socialAssignments, classInfo.classId);
     return assigned.length ? assigned : global.DgConfig.socialSubjects;
   }
@@ -377,7 +374,12 @@
     return "";
   }
 
-  function teacherWeeklyLoadSuggestion(data, teacher, week, lessons, periods) {
+  function teacherWeeklyLimit(teacher) {
+    const limit = Number(teacher?.maxWeeklyPeriods);
+    return Number.isFinite(limit) && limit > 0 ? limit : 20;
+  }
+
+  function teacherWeeklyLoadSuggestion(data, teacher, week, lessons, periods, limit) {
     const subjectNames = Array.from(new Set((lessons || []).map((lesson) => lesson.subject).filter(Boolean)));
     const subjectText = subjectNames.length ? `本週主要科目：${subjectNames.join("、")}。` : "";
     const alternativeNames = new Set();
@@ -395,7 +397,7 @@
     return `建議將 ${teacherSubjectLabel(
       teacher,
       subjectNames
-    )} 第 ${week} 週課程由 ${periods} 節降到 ${TEACHER_WEEKLY_WARNING_PERIODS} 節以內。${subjectText}可先把部分課程移到其他可授課週次；${alternativeText}若現有教師都無法支援，建議請主任徵詢是否增加該科授課老師或協調支援教師。`;
+    )} 第 ${week} 週課程由 ${periods} 節降到教師設定上限 ${limit} 節以內。${subjectText}可先把部分課程移到其他可授課週次；${alternativeText}若現有教師都無法支援，建議請主任徵詢是否增加該科授課老師或協調支援教師。`;
   }
 
   function validateSchedule(schedule, data, options) {
@@ -556,9 +558,12 @@
         classSubjectTeachers.set(classSubjectKey, sameClassSubject);
       }
 
-      const quotaSubject = global.DgConfig.socialSubjects.includes(lesson.subject) ? "社會" : lesson.subject;
-      const quotaKey = [lesson.classId, quotaSubject].join("|");
-      quotaCounts.set(quotaKey, (quotaCounts.get(quotaKey) || 0) + 2);
+      const exactQuotaKey = [lesson.classId, lesson.subject].join("|");
+      quotaCounts.set(exactQuotaKey, (quotaCounts.get(exactQuotaKey) || 0) + 2);
+      if (global.DgConfig.socialSubjects.includes(lesson.subject)) {
+        const socialQuotaKey = [lesson.classId, "社會"].join("|");
+        quotaCounts.set(socialQuotaKey, (quotaCounts.get(socialQuotaKey) || 0) + 2);
+      }
     });
 
     classSlots.forEach((lessons) => {
@@ -592,14 +597,15 @@
       const week = Number(lessons[0].week);
       const teacherInfo = teachers[teacherId];
       const periods = lessons.length * 2;
-      if (teacherInfo && periods > TEACHER_WEEKLY_WARNING_PERIODS) {
+      const weeklyLimit = teacherWeeklyLimit(teacherInfo);
+      if (teacherInfo && periods > weeklyLimit) {
         pushIssue(
           issues,
           "warning",
-          "TEACHER_WEEKLY_LOAD_OVER_12",
-          `${teacherLabelForLessons(data, teacherId, lessons)} 第 ${week} 週目前已排 ${periods} 節，超過每週 ${TEACHER_WEEKLY_WARNING_PERIODS} 節建議上限。`,
+          "TEACHER_WEEKLY_LOAD_OVER_LIMIT",
+          `${teacherLabelForLessons(data, teacherId, lessons)} 第 ${week} 週目前已排 ${periods} 節，超過教師設定每週上限 ${weeklyLimit} 節。`,
           lessons.map((item) => item.id),
-          teacherWeeklyLoadSuggestion(data, teacherInfo, week, lessons, periods)
+          teacherWeeklyLoadSuggestion(data, teacherInfo, week, lessons, periods, weeklyLimit)
         );
       }
     });

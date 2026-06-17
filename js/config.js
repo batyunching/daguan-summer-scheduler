@@ -1,5 +1,5 @@
 (function (global) {
-  const APP_BUILD = "20260617-3";
+  const APP_BUILD = "20260617-5";
 
   const DAYS = [
     { id: 1, label: "星期一", short: "一" },
@@ -27,7 +27,6 @@
     Teacher_Settings: [
       "teacherId",
       "teacherName",
-      "subjectGroup",
       "subjects",
       "availableWeeks",
       "maxWeeklyPeriods",
@@ -87,7 +86,6 @@
     isActive: "是否啟用",
     lastLoginAt: "最後登入時間",
     teacherName: "教師姓名",
-    subjectGroup: "科目群組",
     subjects: "可授科目",
     assignedClasses: "授課班級",
     teacherPosition: "教師職位",
@@ -179,7 +177,6 @@
       {
         teacherId: "T101",
         teacherName: "王文琳",
-        subjectGroup: "國文",
         subjects: ["國文"],
         assignedClasses: [],
         teacherPosition: "導師",
@@ -189,7 +186,6 @@
       {
         teacherId: "T102",
         teacherName: "林思穎",
-        subjectGroup: "國文",
         subjects: ["國文"],
         assignedClasses: [],
         teacherPosition: "專任",
@@ -199,7 +195,6 @@
       {
         teacherId: "T201",
         teacherName: "陳柏翰",
-        subjectGroup: "英文",
         subjects: ["英文"],
         assignedClasses: [],
         teacherPosition: "專任",
@@ -209,7 +204,6 @@
       {
         teacherId: "T202",
         teacherName: "詹慧君",
-        subjectGroup: "英文",
         subjects: ["英文"],
         assignedClasses: [],
         teacherPosition: "導師",
@@ -219,7 +213,6 @@
       {
         teacherId: "T301",
         teacherName: "李俊儀",
-        subjectGroup: "數學",
         subjects: ["數學"],
         assignedClasses: [],
         teacherPosition: "專任",
@@ -229,7 +222,6 @@
       {
         teacherId: "T302",
         teacherName: "蔡雅如",
-        subjectGroup: "數學",
         subjects: ["數學"],
         assignedClasses: [],
         teacherPosition: "導師",
@@ -239,7 +231,6 @@
       {
         teacherId: "T401",
         teacherName: "黃柏霖",
-        subjectGroup: "自然",
         subjects: ["自然"],
         assignedClasses: [],
         teacherPosition: "組長",
@@ -249,7 +240,6 @@
       {
         teacherId: "T402",
         teacherName: "郭怡君",
-        subjectGroup: "自然",
         subjects: ["自然"],
         assignedClasses: [],
         teacherPosition: "專任",
@@ -259,7 +249,6 @@
       {
         teacherId: "T501",
         teacherName: "吳承恩",
-        subjectGroup: "社會",
         subjects: ["公民"],
         assignedClasses: [],
         teacherPosition: "導師",
@@ -269,7 +258,6 @@
       {
         teacherId: "T502",
         teacherName: "許芳瑜",
-        subjectGroup: "社會",
         subjects: ["歷史"],
         assignedClasses: [],
         teacherPosition: "專任",
@@ -279,7 +267,6 @@
       {
         teacherId: "T503",
         teacherName: "周佩君",
-        subjectGroup: "社會",
         subjects: ["地理"],
         assignedClasses: [],
         teacherPosition: "組長",
@@ -289,7 +276,6 @@
       {
         teacherId: "T601",
         teacherName: "蘇雅婷",
-        subjectGroup: "藝術",
         subjects: ["藝術"],
         assignedClasses: [],
         teacherPosition: "專任",
@@ -299,7 +285,6 @@
       {
         teacherId: "T701",
         teacherName: "賴建宏",
-        subjectGroup: "體育",
         subjects: ["體育"],
         assignedClasses: [],
         teacherPosition: "專任",
@@ -309,7 +294,6 @@
       {
         teacherId: "T702",
         teacherName: "謝明達",
-        subjectGroup: "體育",
         subjects: ["體育"],
         assignedClasses: [],
         teacherPosition: "組長",
