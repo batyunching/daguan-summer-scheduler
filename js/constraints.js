@@ -659,6 +659,13 @@
         const quotas = (data.courseQuotas || []).filter((quota) => String(quota.grade) === String(classInfo.grade));
         const missingQuotas = [];
         quotas.forEach((quota) => {
+          if (
+            global.DgConfig.socialSubjects.includes(quota.subject) &&
+            !global.DgSocialAssignment.subjectAllowedForClass(data, classInfo.classId, quota.subject)
+          ) {
+            return;
+          }
+
           const key = [classInfo.classId, quota.subject].join("|");
           const actual = quotaCounts.get(key) || 0;
           if (actual < Number(quota.targetPeriods)) {

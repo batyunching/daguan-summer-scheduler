@@ -133,6 +133,22 @@
     return (assignments || []).find((item) => item.classId === classId);
   }
 
+  function configuredSubjectsForClass(data, classId) {
+    const row = assignmentForClass(data?.socialAssignments || [], classId);
+    const assigned = row ? [row.subjectA, row.subjectB].filter(Boolean) : [];
+    if (assigned.length) return assigned;
+
+    const classInfo = (data?.classes || []).find((item) => String(item.classId) === String(classId));
+    const manualSubjects = parseManualSubjects(classInfo?.manualSocialSubjects);
+    return manualSubjects.length ? manualSubjects : [];
+  }
+
+  function subjectAllowedForClass(data, classId, subject) {
+    if (!global.DgConfig.socialSubjects.includes(subject)) return true;
+    const configured = configuredSubjectsForClass(data, classId);
+    return !configured.length || configured.includes(subject);
+  }
+
   function subjectsForClass(assignments, classId) {
     const row = assignmentForClass(assignments, classId);
     return row ? [row.subjectA, row.subjectB].filter(Boolean) : [];
@@ -151,6 +167,8 @@
     setManual,
     setAuto,
     assignmentForClass,
+    configuredSubjectsForClass,
+    subjectAllowedForClass,
     subjectsForClass,
     teacherForSubject,
     socialTeachers,

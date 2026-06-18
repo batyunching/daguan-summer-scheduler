@@ -299,6 +299,13 @@
     (data.classes || []).forEach((classInfo) => {
       const quotas = (data.courseQuotas || []).filter((quota) => String(quota.grade) === String(classInfo.grade));
       quotas.forEach((quota) => {
+        if (
+          global.DgConfig.socialSubjects.includes(quota.subject) &&
+          !global.DgSocialAssignment.subjectAllowedForClass(data, classInfo.classId, quota.subject)
+        ) {
+          return;
+        }
+
         if (quota.subject === "社會") {
           const assignment = global.DgSocialAssignment.assignmentForClass(data.socialAssignments, classInfo.classId);
           const socialSubjects = assignment ? [assignment.subjectA, assignment.subjectB].filter(Boolean) : ["公民", "歷史"];
@@ -782,6 +789,18 @@
     });
   }
 
+  function hardErrorMessage(hardErrors, relatedLessonIds, actionLabel) {
+    const issues = hardErrors || [];
+    const relatedIds = new Set((relatedLessonIds || []).filter(Boolean).map(String));
+    const relatedIssue = relatedIds.size
+      ? issues.find((issue) => (issue.lessonIds || []).some((id) => relatedIds.has(String(id))))
+      : null;
+    if (relatedIssue) return relatedIssue.message;
+    const first = issues[0];
+    if (!first) return "目前課表有硬性衝突，請先檢查衝突。";
+    return `目前課表另有硬性衝突，需先處理才能套用${actionLabel || "這次調整"}：${first.message}`;
+  }
+
   function moveLesson(schedule, lessonId, target, data, options) {
     const settings = {
       allowClassSubjectFatigue: false,
@@ -829,7 +848,7 @@
     if (hardErrors.length) {
       return {
         ok: false,
-        message: hardErrors[0].message,
+        message: hardErrorMessage(hardErrors, [current.id, targetLesson?.id], "這次調課"),
         issues: hardErrors,
       };
     }
@@ -884,7 +903,11 @@
     next.push(lesson);
     const hardErrors = global.DgConstraints.getHardErrors(next, data);
     if (hardErrors.length) {
-      return { ok: false, message: hardErrors[0].message, issues: hardErrors };
+      return {
+        ok: false,
+        message: hardErrorMessage(hardErrors, [lesson.id, existingAtSlot?.id], "這次預排"),
+        issues: hardErrors,
+      };
     }
     return { ok: true, schedule: next, lesson };
   }

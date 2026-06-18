@@ -663,7 +663,18 @@
         targetLesson,
       };
     }
-    return { kind: "blocked", label: "不可調", message: result.message || "不符合調課限制。" };
+    const relatedLessonIds = new Set([lesson.id, targetLesson?.id].filter(Boolean).map(String));
+    const relatedIssue = (result.issues || []).find((issue) =>
+      (issue.lessonIds || []).some((lessonId) => relatedLessonIds.has(String(lessonId)))
+    );
+    const unrelatedHardIssue = (result.issues || []).length && !relatedIssue;
+    return {
+      kind: "blocked",
+      label: "不可調",
+      message: unrelatedHardIssue
+        ? "目前課表已有其他硬性衝突，請先到「衝突檢查」處理，再回來調課。"
+        : relatedIssue?.message || result.message || "不符合調課限制。",
+    };
   }
 
   function slotText(slot) {
@@ -1061,6 +1072,11 @@
       .forEach((quota) => {
         if (quota.subject === "社會") {
           subjects.push(...global.DgSocialAssignment.subjectsForClass(state.data.socialAssignments, classId));
+        } else if (
+          global.DgConfig.socialSubjects.includes(quota.subject) &&
+          !global.DgSocialAssignment.subjectAllowedForClass(state.data, classId, quota.subject)
+        ) {
+          return;
         } else {
           subjects.push(quota.subject);
         }
