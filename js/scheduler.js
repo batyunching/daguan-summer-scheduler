@@ -157,6 +157,21 @@
     );
   }
 
+  function findTeacher(data, teacherId) {
+    return (data.teachers || []).find((teacher) => teacher.teacherId === teacherId);
+  }
+
+  function teacherIdentityKey(data, teacherId) {
+    const teacher = findTeacher(data, teacherId);
+    const name = String(teacher?.teacherName || "").trim();
+    return name ? `name:${name}` : `id:${teacherId || ""}`;
+  }
+
+  function teacherAvailableAtSlot(schedule, data, teacherId, week, day, blockStart, ignoreIds) {
+    if (!day || !blockStart) return true;
+    return !teacherBusyAtSlot(schedule, teacherId, { week, day, blockStart }, data, ignoreIds);
+  }
+
   function teacherCanTeachSubjectClass(teacher, subject, classId) {
     return teacher && (teacher.subjects || []).includes(subject) && teacherCanTeachClass(teacher, classId);
   }
@@ -189,18 +204,30 @@
   function chooseTeacher(data, classId, subject, week, schedule, preferredTeacherId, ignoreIds, day, blockStart) {
     const assignedTeacherId = assignedTeacherForClassSubject(schedule, classId, subject, ignoreIds);
     if (assignedTeacherId) {
-      const teacher = (data.teachers || []).find((item) => item.teacherId === assignedTeacherId);
-      return teacherCanTeach(teacher, subject, week, classId, day, data, blockStart) ? assignedTeacherId : "";
+      const teacher = findTeacher(data, assignedTeacherId);
+      return teacherCanTeach(teacher, subject, week, classId, day, data, blockStart) &&
+        teacherAvailableAtSlot(schedule, data, assignedTeacherId, week, day, blockStart, ignoreIds)
+        ? assignedTeacherId
+        : "";
     }
 
     if (preferredTeacherId) {
-      const teacher = (data.teachers || []).find((item) => item.teacherId === preferredTeacherId);
-      if (teacherCanTeach(teacher, subject, week, classId, day, data, blockStart)) return preferredTeacherId;
+      const teacher = findTeacher(data, preferredTeacherId);
+      if (
+        teacherCanTeach(teacher, subject, week, classId, day, data, blockStart) &&
+        teacherAvailableAtSlot(schedule, data, preferredTeacherId, week, day, blockStart, ignoreIds)
+      ) {
+        return preferredTeacherId;
+      }
     }
 
     const load = global.DgAiOptimizer.teacherLoadMap(schedule);
     return (data.teachers || [])
-      .filter((teacher) => teacherCanTeach(teacher, subject, week, classId, day, data, blockStart))
+      .filter(
+        (teacher) =>
+          teacherCanTeach(teacher, subject, week, classId, day, data, blockStart) &&
+          teacherAvailableAtSlot(schedule, data, teacher.teacherId, week, day, blockStart, ignoreIds)
+      )
       .slice()
       .sort((a, b) => {
         const weeklyA = weeklyLoad(schedule, a.teacherId, week);
@@ -640,7 +667,7 @@
         if (!teacherCanTeachDay(teacher, slot.day)) continue;
         if (!teacherCanTeachDate(teacher, slot.week, slot.day, data)) continue;
         if (!teacherCanTeachBlock(teacher, slot.blockStart)) continue;
-        if (teacherBusyAtSlot(schedule, teacher.teacherId, slot)) {
+        if (teacherBusyAtSlot(schedule, teacher.teacherId, slot, data)) {
           occupiedByTeacher += 1;
           continue;
         }
@@ -676,10 +703,13 @@
     return hardErrorSample || `排課器找不到符合所有限制的時段，請檢查教師週次、授課班級、場地容量與鎖定課程。`;
   }
 
-  function teacherBusyAtSlot(schedule, teacherId, slot) {
+  function teacherBusyAtSlot(schedule, teacherId, slot, data, ignoreIds) {
+    const ignore = new Set(ignoreIds || []);
+    const targetKey = teacherIdentityKey(data || {}, teacherId);
     return (schedule || []).some(
       (lesson) =>
-        lesson.teacherId === teacherId &&
+        !ignore.has(lesson.id) &&
+        teacherIdentityKey(data || {}, lesson.teacherId) === targetKey &&
         Number(lesson.week) === Number(slot.week) &&
         Number(lesson.day) === Number(slot.day) &&
         Number(lesson.blockStart) === Number(slot.blockStart)

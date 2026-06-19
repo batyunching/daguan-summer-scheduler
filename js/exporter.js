@@ -52,8 +52,9 @@
   }
 
   function teacherRows(schedule, data, teacherId) {
+    const teacherIds = new Set((Array.isArray(teacherId) ? teacherId : [teacherId]).filter(Boolean).map(String));
     return baseRows(
-      (schedule || []).filter((lesson) => lesson.teacherId === teacherId),
+      (schedule || []).filter((lesson) => teacherIds.has(String(lesson.teacherId))),
       data
     );
   }

@@ -7,8 +7,19 @@
     return [lesson.classId, lesson.week, lesson.day, lesson.blockStart || lesson.slotStart || lesson.period].join("|");
   }
 
-  function teacherSlotKey(lesson) {
-    return [lesson.teacherId, lesson.week, lesson.day, lesson.blockStart || lesson.slotStart || lesson.period].join("|");
+  function teacherIdentityKey(teacher, teacherId) {
+    const name = String(teacher?.teacherName || "").trim();
+    return name ? `name:${name}` : `id:${teacherId || teacher?.teacherId || ""}`;
+  }
+
+  function teacherSlotKey(lesson, teachers) {
+    const teacher = teachers?.[lesson.teacherId];
+    return [
+      teacherIdentityKey(teacher, lesson.teacherId),
+      lesson.week,
+      lesson.day,
+      lesson.blockStart || lesson.slotStart || lesson.period,
+    ].join("|");
   }
 
   function roomSlotKey(lesson) {
@@ -200,13 +211,19 @@
     return (schedule || []).find((lesson) => lessonMatchesSlot(lesson, slot));
   }
 
-  function teacherBusyAt(schedule, teacherId, slot) {
+  function teacherBusyAt(schedule, teacherId, slot, data) {
+    const teacher = findTeacher(data || {}, teacherId);
+    const targetKey = teacherIdentityKey(teacher, teacherId);
     return (schedule || []).some(
-      (lesson) =>
-        lesson.teacherId === teacherId &&
-        Number(lesson.week) === Number(slot.week) &&
-        Number(lesson.day) === Number(slot.day) &&
-        Number(lesson.blockStart || lesson.slotStart || lesson.period) === Number(slot.blockStart)
+      (lesson) => {
+        const lessonTeacher = findTeacher(data || {}, lesson.teacherId);
+        return (
+          teacherIdentityKey(lessonTeacher, lesson.teacherId) === targetKey &&
+          Number(lesson.week) === Number(slot.week) &&
+          Number(lesson.day) === Number(slot.day) &&
+          Number(lesson.blockStart || lesson.slotStart || lesson.period) === Number(slot.blockStart)
+        );
+      }
     );
   }
 
@@ -305,7 +322,7 @@
         if (!teacherCanTeachDay(teacher, slot.day)) return;
         if (!teacherCanTeachDate(teacher, slot.week, slot.day, data)) return;
         if (!teacherCanTeachBlock(teacher, slot.blockStart)) return;
-        if (teacherBusyAt(schedule, teacher.teacherId, slot)) return;
+        if (teacherBusyAt(schedule, teacher.teacherId, slot, data)) return;
         if (sameSubjectOnDay(schedule, slot, subject)) return;
         viable.push({ slot, teacher });
       });
@@ -528,7 +545,7 @@
       classSlots.set(cKey, sameClassSlot);
 
       if (lesson.teacherId) {
-        const tKey = teacherSlotKey({ ...lesson, blockStart });
+        const tKey = teacherSlotKey({ ...lesson, blockStart }, teachers);
         const sameTeacherSlot = teacherSlots.get(tKey) || [];
         sameTeacherSlot.push(lesson);
         teacherSlots.set(tKey, sameTeacherSlot);

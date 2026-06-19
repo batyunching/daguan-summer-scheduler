@@ -77,7 +77,11 @@
     const classes = state.data.classes || [];
     const teachers = state.data.teachers || [];
     state.selectedClassId = state.selectedClassId || classes[0]?.classId || "";
-    state.selectedTeacherId = state.currentUser?.teacherId || teachers[0]?.teacherId || "";
+    state.selectedTeacherId =
+      teacherGroupBySelection(state.currentUser?.teacherId || state.selectedTeacherId)?.teacherId ||
+      teacherGroups()[0]?.teacherId ||
+      teachers[0]?.teacherId ||
+      "";
     state.viewMode = state.currentUser?.role === "teacher" ? "teacher" : "class";
 
     const activeVersion = global.DgVersion.listVersions().find((version) => version.isActive);
@@ -497,11 +501,20 @@
   function renderSelectors() {
     const classes = state.data.classes || [];
     const teachers = state.data.teachers || [];
+    const groups = teacherGroups();
     if (!classes.some((item) => item.classId === state.selectedClassId)) {
       state.selectedClassId = classes[0]?.classId || "";
     }
-    if (!teachers.some((item) => item.teacherId === state.selectedTeacherId)) {
-      state.selectedTeacherId = state.currentUser?.teacherId || teachers[0]?.teacherId || "";
+    const currentTeacherGroup = teacherGroupBySelection(state.currentUser?.teacherId);
+    const selectedGroup = teacherGroupBySelection(state.selectedTeacherId);
+    if (selectedGroup) {
+      state.selectedTeacherId = selectedGroup.teacherId;
+    } else {
+      state.selectedTeacherId =
+        currentTeacherGroup?.teacherId || groups[0]?.teacherId || teachers[0]?.teacherId || "";
+    }
+    if (state.currentUser?.role === "teacher" && currentTeacherGroup) {
+      state.selectedTeacherId = currentTeacherGroup.teacherId;
     }
 
     els.viewModeSelect.value = state.viewMode;
@@ -512,12 +525,17 @@
 
     const teacherOptions =
       state.currentUser?.role === "teacher"
-        ? teachers.filter((teacher) => teacher.teacherId === state.currentUser.teacherId)
-        : teachers;
+        ? currentTeacherGroup
+          ? [currentTeacherGroup]
+          : []
+        : groups;
     els.teacherSelect.innerHTML = teacherOptions
       .map((item) => {
         const subjectText = (item.subjects || []).join("、") || "未指定科目";
-        return `<option value="${escapeHtml(item.teacherId)}">${escapeHtml(item.teacherName)}（${escapeHtml(subjectText)}）</option>`;
+        const codeText = item.teacherIds?.length > 1 ? `｜${item.teacherIds.join("、")}` : "";
+        return `<option value="${escapeHtml(item.teacherId)}">${escapeHtml(item.teacherName)}（${escapeHtml(subjectText)}${escapeHtml(
+          codeText
+        )}）</option>`;
       })
       .join("");
     els.teacherSelect.value = state.selectedTeacherId;
@@ -619,6 +637,51 @@
       Number(lesson.day) === Number(slot.day) &&
       Number(lesson.blockStart) === Number(slot.blockStart)
     );
+  }
+
+  function teacherGroupKey(teacher) {
+    const name = String(teacher?.teacherName || teacher?.teacherId || "").trim();
+    return `name:${name}`;
+  }
+
+  function buildTeacherGroups(teachers) {
+    const groups = new Map();
+    (teachers || []).forEach((teacher) => {
+      const key = teacherGroupKey(teacher);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          teacherId: key,
+          teacherName: teacher.teacherName || teacher.teacherId,
+          teacherIds: [],
+          teachers: [],
+          subjects: [],
+        });
+      }
+      const group = groups.get(key);
+      group.teacherIds.push(teacher.teacherId);
+      group.teachers.push(teacher);
+      (teacher.subjects || []).forEach((subject) => {
+        if (!group.subjects.includes(subject)) group.subjects.push(subject);
+      });
+    });
+    return Array.from(groups.values());
+  }
+
+  function teacherGroups() {
+    return buildTeacherGroups(state.data.teachers || []);
+  }
+
+  function teacherGroupBySelection(value) {
+    const groups = teacherGroups();
+    return groups.find((group) => group.teacherId === value || group.teacherIds.includes(value));
+  }
+
+  function selectedTeacherGroup() {
+    return teacherGroupBySelection(state.selectedTeacherId);
+  }
+
+  function teacherIdsForView(teacher) {
+    return new Set((teacher?.teacherIds || [teacher?.teacherId]).filter(Boolean).map(String));
   }
 
   function sourceLabel(source) {
@@ -762,13 +825,14 @@
 
   function renderTeacherWeekTable(teacher, week, issueIds, scheduleView) {
     const schedule = scheduleView || state.schedule;
+    const teacherIds = teacherIdsForView(teacher);
     const rows = global.DgConfig.blocks
       .map((block) => {
         const cells = global.DgConfig.days
           .map((day) => {
             const lessons = schedule.filter(
               (lesson) =>
-                lesson.teacherId === teacher.teacherId &&
+                teacherIds.has(String(lesson.teacherId)) &&
                 Number(lesson.week) === Number(week) &&
                 Number(lesson.day) === day.id &&
                 Number(lesson.blockStart) === block.start
@@ -809,9 +873,14 @@
     );
     const teacherIds = new Set([lesson.teacherId]);
     if (state.pendingMove?.targetLesson?.teacherId) teacherIds.add(state.pendingMove.targetLesson.teacherId);
-    const teachers = Array.from(teacherIds)
-      .map((teacherId) => (state.data.teachers || []).find((teacher) => teacher.teacherId === teacherId))
-      .filter(Boolean);
+    const teachers = Array.from(
+      new Map(
+        Array.from(teacherIds)
+          .map((teacherId) => teacherGroupBySelection(teacherId))
+          .filter(Boolean)
+          .map((teacher) => [teacher.teacherId, teacher])
+      ).values()
+    );
     const weeks = Array.from({ length: maxOutputWeeks() }, (_, index) => index + 1);
     const title = state.pendingMove ? "相關教師課表：調課後預覽" : "相關教師課表：目前狀態";
 
@@ -880,7 +949,7 @@
   }
 
   function renderTeacherSchedule(issueIds) {
-    const teacher = (state.data.teachers || []).find((item) => item.teacherId === state.selectedTeacherId);
+    const teacher = selectedTeacherGroup();
     if (!teacher) {
       els.scheduleContainer.innerHTML = `<p>尚未建立教師資料。</p>`;
       return;
@@ -1714,7 +1783,7 @@
   function printBatchSchedules(type) {
     refreshIssues();
     const issueIds = global.DgConstraints.lessonsWithIssues(state.schedule, state.issues);
-    const items = type === "classes" ? state.data.classes || [] : state.data.teachers || [];
+    const items = type === "classes" ? state.data.classes || [] : teacherGroups();
     if (!items.length) {
       toast(type === "classes" ? "尚未建立班級資料。" : "尚未建立教師資料。", "error");
       return;
@@ -1737,12 +1806,16 @@
   function handleExport(event) {
     const action = event.currentTarget.dataset.export;
     const className = global.DgConstraints.className(state.data, state.selectedClassId);
-    const teacherName = global.DgConstraints.teacherName(state.data, state.selectedTeacherId);
+    const teacher = selectedTeacherGroup();
+    const teacherName = teacher?.teacherName || global.DgConstraints.teacherName(state.data, state.selectedTeacherId);
     if (action === "classCsv") {
       global.DgExporter.downloadCsv(`${className}-暑期課表.csv`, global.DgExporter.classRows(state.schedule, state.data, state.selectedClassId));
     }
     if (action === "teacherCsv") {
-      global.DgExporter.downloadCsv(`${teacherName}-暑期課表.csv`, global.DgExporter.teacherRows(state.schedule, state.data, state.selectedTeacherId));
+      global.DgExporter.downloadCsv(
+        `${teacherName}-暑期課表.csv`,
+        global.DgExporter.teacherRows(state.schedule, state.data, teacher?.teacherIds || [state.selectedTeacherId])
+      );
     }
     if (action === "allCsv") {
       global.DgExporter.downloadCsv("大觀國中暑期總課表.csv", global.DgExporter.allRows(state.schedule, state.data));
