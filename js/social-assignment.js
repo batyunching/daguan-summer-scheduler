@@ -54,14 +54,16 @@
       const shouldKeepManual = keepManual !== false && (classInfo.socialMode === "manual" || old?.mode === "manual");
 
       if (shouldKeepManual) {
-        const subjectA = old?.subjectA || manualSubjects[0] || "公民";
-        const subjectB = old?.subjectB || manualSubjects[1] || (subjectA === "歷史" ? "地理" : "歷史");
+        const subjectA = manualSubjects[0] || old?.subjectA || "公民";
+        const subjectB = manualSubjects[1] || old?.subjectB || (subjectA === "歷史" ? "地理" : "歷史");
         const teacherAList = socialTeachers(data, subjectA, classInfo.classId);
         const teacherBList = socialTeachers(data, subjectB, classInfo.classId);
-        const teacherA = teacherAList.some((teacher) => teacher.teacherId === old?.teacherA)
+        const oldTeacherA = old?.subjectA === subjectA ? old?.teacherA : "";
+        const oldTeacherB = old?.subjectB === subjectB ? old?.teacherB : "";
+        const teacherA = teacherAList.some((teacher) => teacher.teacherId === oldTeacherA)
           ? old.teacherA
           : pickTeacher(data, subjectA, teacherLoad, classInfo.classId);
-        const teacherB = teacherBList.some((teacher) => teacher.teacherId === old?.teacherB)
+        const teacherB = teacherBList.some((teacher) => teacher.teacherId === oldTeacherB)
           ? old.teacherB
           : pickTeacher(data, subjectB, teacherLoad, classInfo.classId);
         subjectLoad[subjectA] = (subjectLoad[subjectA] || 0) + 1;
