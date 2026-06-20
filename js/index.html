@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>大觀國中暑期排課系統</title>
+    <link rel="stylesheet" href="css/style.css?v=20260620-2" />
+  </head>
+  <body>
+    <div id="loginView" class="login-shell">
+      <section class="login-panel" aria-labelledby="loginTitle">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">大觀</div>
+          <div>
+            <p class="eyebrow">暑期輔導課表</p>
+            <h1 id="loginTitle">大觀國中暑期排課系統</h1>
+          </div>
+        </div>
+        <form id="loginForm" class="login-form">
+          <label>
+            帳號 Email
+            <input id="loginEmail" name="email" type="email" autocomplete="username" required />
+          </label>
+          <label>
+            密碼
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <label class="hidden">
+            GAS Web App URL
+            <input id="loginGasUrl" type="url" placeholder="貼上 GAS Web App URL 後可用試算表帳號登入" />
+          </label>
+          <button type="submit" class="primary-action">登入系統</button>
+        </form>
+        <div class="demo-logins" aria-label="測試帳號">
+          <button type="button" data-demo-login="admin">管理者測試帳號</button>
+          <button type="button" data-demo-login="teacher">教師測試帳號</button>
+        </div>
+        <p id="loginMessage" class="form-message" role="status"></p>
+      </section>
+    </div>
+
+    <div id="appShell" class="app-shell hidden">
+      <header class="topbar">
+        <div class="brand-row compact">
+          <div class="brand-mark small" aria-hidden="true">大觀</div>
+          <div>
+            <p class="eyebrow">GitHub Pages + Google Sheets + GAS</p>
+            <h1>大觀國中暑期排課系統</h1>
+          </div>
+        </div>
+        <div class="account-strip">
+          <span id="buildState" class="status-pill build-pill">版本 20260620-2</span>
+          <span id="apiState" class="status-pill warning">尚未設定 GAS</span>
+          <span id="currentUserLabel" class="user-label"></span>
+          <button id="logoutButton" type="button" class="ghost-button">登出</button>
+        </div>
+      </header>
+
+      <aside class="side-panel">
+        <nav class="nav-stack" aria-label="功能選單">
+          <button type="button" class="nav-button active" data-view="schedule">課表畫布</button>
+          <button type="button" class="nav-button" data-view="social">社會科安排</button>
+          <button type="button" class="nav-button" data-view="conflicts">衝突檢查</button>
+          <button type="button" class="nav-button" data-view="versions">版本歷史</button>
+          <button type="button" class="nav-button" data-view="exports">匯出列印</button>
+          <button type="button" class="nav-button" data-view="settings">資料設定</button>
+        </nav>
+
+        <section class="summary-panel" aria-label="排課摘要">
+          <h2>目前狀態</h2>
+          <dl class="metric-list">
+            <div>
+              <dt>班級</dt>
+              <dd id="metricClasses">0</dd>
+            </div>
+            <div>
+              <dt>課程區塊</dt>
+              <dd id="metricLessons">0</dd>
+            </div>
+            <div>
+              <dt>衝突</dt>
+              <dd id="metricConflicts">0</dd>
+            </div>
+          </dl>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <section id="apiNotice" class="notice-banner">
+          <strong>尚未連接 Google Sheets。</strong>
+          目前使用內建示範資料；可在「資料設定」貼上 GAS Web App URL 後讀寫試算表。
+        </section>
+
+        <section class="toolbar" aria-label="排課控制列">
+          <div class="control-group">
+            <label>
+              檢視模式
+              <select id="viewModeSelect">
+                <option value="class">班級課表</option>
+                <option value="teacher">教師課表</option>
+              </select>
+            </label>
+            <label id="classSelectorWrap">
+              班級
+              <select id="classSelect"></select>
+            </label>
+            <label id="teacherSelectorWrap">
+              教師
+              <select id="teacherSelect"></select>
+            </label>
+            <label>
+              週次
+              <select id="weekSelect"></select>
+            </label>
+          </div>
+          <div class="action-row">
+            <button id="autoScheduleButton" type="button" class="primary-action">一鍵自動排課</button>
+            <button id="reloadDataButton" type="button">重新讀取試算表</button>
+            <button id="undoButton" type="button" class="history-action">復原上一步</button>
+            <button id="redoButton" type="button" class="history-action">重做</button>
+            <button id="validateButton" type="button">檢查衝突</button>
+            <button id="saveVersionButton" type="button">儲存版本</button>
+            <button id="printButton" type="button">PDF 列印</button>
+          </div>
+        </section>
+
+        <section id="scheduleView" class="view-panel active" aria-labelledby="scheduleTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Schedule Canvas</p>
+              <h2 id="scheduleTitle">課表畫布</h2>
+            </div>
+            <div class="legend-row">
+              <span><i class="legend-dot locked"></i>鎖定</span>
+              <span><i class="legend-dot warning"></i>需確認</span>
+              <span><i class="legend-dot ok"></i>已排定</span>
+            </div>
+          </div>
+          <div id="scheduleContainer" class="schedule-container"></div>
+        </section>
+
+        <section id="socialView" class="view-panel" aria-labelledby="socialTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Social Studies</p>
+              <h2 id="socialTitle">社會科自動 / 手動安排</h2>
+            </div>
+            <button id="autoSocialButton" type="button">重新自動分配</button>
+          </div>
+          <div id="socialTable" class="table-shell"></div>
+        </section>
+
+        <section id="conflictsView" class="view-panel" aria-labelledby="conflictsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Validation</p>
+              <h2 id="conflictsTitle">衝突檢查</h2>
+            </div>
+            <div class="conflict-actions">
+              <label class="compact-select-label">
+                類型
+                <select id="conflictFilterSelect">
+                  <option value="all">全部</option>
+                  <option value="class">班級</option>
+                  <option value="teacherLoad">教師節數</option>
+                  <option value="quota">節數不足 / 未排入</option>
+                  <option value="empty">空白課表提醒</option>
+                  <option value="teacher">其他教師問題</option>
+                  <option value="room">場地</option>
+                  <option value="social">社會科</option>
+                  <option value="recommendation">最佳化建議</option>
+                </select>
+              </label>
+              <button id="dismissFilteredConflictsButton" type="button">刪去目前篩選</button>
+              <button id="restoreConflictButton" type="button">重新顯示全部</button>
+              <button id="copyConflictButton" type="button">複製檢查結果</button>
+            </div>
+          </div>
+          <div id="conflictList" class="conflict-list"></div>
+        </section>
+
+        <section id="versionsView" class="view-panel" aria-labelledby="versionsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Version History</p>
+              <h2 id="versionsTitle">版本歷史</h2>
+            </div>
+          </div>
+          <form id="versionForm" class="inline-form">
+            <label>
+              版本名稱
+              <input id="versionName" type="text" placeholder="例如：第一次完整排課" />
+            </label>
+            <label>
+              備註
+              <input id="versionNote" type="text" placeholder="記錄本次調整原因" />
+            </label>
+            <button type="submit" class="primary-action">建立版本</button>
+          </form>
+          <div id="versionList" class="version-list"></div>
+        </section>
+
+        <section id="exportsView" class="view-panel" aria-labelledby="exportsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Export</p>
+              <h2 id="exportsTitle">匯出與列印</h2>
+            </div>
+          </div>
+          <div class="export-grid">
+            <button type="button" data-export="classCsv">匯出目前班級 CSV</button>
+            <button type="button" data-export="teacherCsv">匯出目前教師 CSV</button>
+            <button type="button" data-export="allCsv">匯出總課表 CSV</button>
+            <button type="button" data-export="classPrint">列印班級課表 PDF</button>
+            <button type="button" data-export="teacherPrint">列印教師課表 PDF</button>
+            <button type="button" data-export="allClassesPrint">批次列印全部班級 PDF</button>
+            <button type="button" data-export="allTeachersPrint">批次列印全部教師 PDF</button>
+          </div>
+        </section>
+
+        <section id="settingsView" class="view-panel" aria-labelledby="settingsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Google Sheets API</p>
+              <h2 id="settingsTitle">資料設定</h2>
+            </div>
+          </div>
+          <form id="settingsForm" class="settings-form">
+            <label>
+              GAS Web App URL
+              <input id="gasUrlInput" type="url" placeholder="https://script.google.com/macros/s/..." />
+            </label>
+            <button type="submit" class="primary-action">儲存 API URL</button>
+            <button id="clearGasUrlButton" type="button">清除 URL</button>
+          </form>
+          <div id="schemaPreview" class="schema-preview"></div>
+        </section>
+      </main>
+
+      <aside id="editorPanel" class="editor-panel hidden" aria-labelledby="editorTitle">
+        <div class="editor-heading">
+          <div>
+            <p class="eyebrow">Pre Assignment</p>
+            <h2 id="editorTitle">預排 / 鎖定</h2>
+          </div>
+          <button id="closeEditorButton" type="button" class="icon-button" aria-label="關閉">×</button>
+        </div>
+        <form id="lessonForm" class="lesson-form">
+          <p id="editorSlotLabel" class="slot-label"></p>
+          <label>
+            科目
+            <select id="lessonSubject"></select>
+          </label>
+          <label>
+            教師
+            <select id="lessonTeacher"></select>
+          </label>
+          <label>
+            場地
+            <select id="lessonRoom"></select>
+          </label>
+          <label class="check-row">
+            <input id="lessonLocked" type="checkbox" />
+            <span>鎖定此連堂區塊</span>
+          </label>
+          <label>
+            備註
+            <textarea id="lessonNote" rows="3" placeholder="例如：指定補課、教室協調"></textarea>
+          </label>
+          <div class="editor-actions">
+            <button type="submit" class="primary-action">套用</button>
+            <button id="clearLessonButton" type="button">清空</button>
+          </div>
+          <p id="editorMessage" class="form-message" role="status"></p>
+        </form>
+      </aside>
+    </div>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="js/config.js?v=20260620-2"></script>
+    <script src="js/api.js?v=20260620-2"></script>
+    <script src="js/auth.js?v=20260620-2"></script>
+    <script src="js/constraints.js?v=20260620-2"></script>
+    <script src="js/social-assignment.js?v=20260620-2"></script>
+    <script src="js/ai-optimizer.js?v=20260620-2"></script>
+    <script src="js/scheduler.js?v=20260620-2"></script>
+    <script src="js/dragdrop.js?v=20260620-2"></script>
+    <script src="js/version.js?v=20260620-2"></script>
+    <script src="js/exporter.js?v=20260620-2"></script>
+    <script src="js/app.js?v=20260620-2"></script>
+  </body>
+</html>
