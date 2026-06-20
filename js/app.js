@@ -1196,9 +1196,21 @@
     );
   }
 
+  function gradeForClassId(classId) {
+    const classInfo = (state.data.classes || []).find((item) => String(item.classId) === String(classId));
+    if (classInfo?.grade) return String(classInfo.grade);
+    return String(classId || "").match(/^\d/)?.[0] || "";
+  }
+
   function teacherOptionLabel(teacher, classId) {
-    const isClassTeacher = global.DgConstraints.teacherCanTeachClass(teacher, classId);
-    return `${teacher.teacherName}老師（${isClassTeacher ? "該班授課教師" : "非該班授課教師"}）`;
+    if (global.DgConstraints.teacherCanTeachClass(teacher, classId)) {
+      return `${teacher.teacherName}老師（該班授課教師）`;
+    }
+    const targetGrade = gradeForClassId(classId);
+    const sameGrade = targetGrade
+      ? (teacher.assignedClasses || []).some((assignedClassId) => gradeForClassId(assignedClassId) === targetGrade)
+      : false;
+    return `${teacher.teacherName}老師（${sameGrade ? "同年級非該班授課教師" : "跨年級同科教師"}）`;
   }
 
   function renderLessonSubjectOptions(classId) {
