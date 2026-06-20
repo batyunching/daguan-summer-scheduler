@@ -18,6 +18,7 @@
     conflictFilter: "all",
     undoStack: [],
     redoStack: [],
+    pendingDeleteVersionId: "",
   };
 
   const ALL_WEEKS_VALUE = "all";
@@ -1704,14 +1705,33 @@
     els.versionList.innerHTML = versions.length
       ? versions
           .map(
-            (version) => `
-              <article class="version-item">
-                <strong>${escapeHtml(version.versionName)}${version.isActive ? "｜目前載入" : ""}</strong>
-                <p>${escapeHtml(new Date(version.createdAt).toLocaleString("zh-TW"))}　${escapeHtml(version.note || "")}</p>
-                <button type="button" data-version-load="${escapeHtml(version.versionId)}">載入</button>
-                <button type="button" data-version-delete="${escapeHtml(version.versionId)}">刪除</button>
-              </article>
-            `
+            (version) => {
+              const confirmingDelete = state.pendingDeleteVersionId === version.versionId;
+              return `
+                <article class="version-item${confirmingDelete ? " confirm-delete" : ""}">
+                  <strong>${escapeHtml(version.versionName)}${version.isActive ? "｜目前載入" : ""}</strong>
+                  <p>${escapeHtml(new Date(version.createdAt).toLocaleString("zh-TW"))}　${escapeHtml(version.note || "")}</p>
+                  ${
+                    confirmingDelete
+                      ? `<p class="confirm-delete-message">確認是否刪除？刪除後無法從版本歷史直接復原。</p>`
+                      : ""
+                  }
+                  <div class="version-actions">
+                    <button type="button" data-version-load="${escapeHtml(version.versionId)}">載入</button>
+                    ${
+                      confirmingDelete
+                        ? `
+                          <button type="button" class="danger-action" data-version-confirm-delete="${escapeHtml(
+                            version.versionId
+                          )}">確認刪除</button>
+                          <button type="button" data-version-cancel-delete="${escapeHtml(version.versionId)}">取消</button>
+                        `
+                        : `<button type="button" data-version-delete="${escapeHtml(version.versionId)}">刪除</button>`
+                    }
+                  </div>
+                </article>
+              `;
+            }
           )
           .join("")
       : `<article class="version-item"><strong>尚無版本</strong><p>排課通過檢查後即可建立版本。</p></article>`;
@@ -1720,6 +1740,7 @@
       button.addEventListener("click", () => {
         const version = global.DgVersion.loadVersion(button.dataset.versionLoad);
         if (!version) return;
+        state.pendingDeleteVersionId = "";
         applyScheduleChange(version.schedule || [], [], `載入版本：${version.versionName}`);
         state.activeView = "schedule";
         closeEditor();
@@ -1729,9 +1750,25 @@
     });
     els.versionList.querySelectorAll("[data-version-delete]").forEach((button) => {
       button.addEventListener("click", () => {
-        global.DgVersion.removeVersion(button.dataset.versionDelete);
+        state.pendingDeleteVersionId = button.dataset.versionDelete;
+        renderVersions();
+        toast("請再次確認是否刪除版本。");
+      });
+    });
+    els.versionList.querySelectorAll("[data-version-confirm-delete]").forEach((button) => {
+      button.addEventListener("click", () => {
+        global.DgVersion.removeVersion(button.dataset.versionConfirmDelete);
+        state.pendingDeleteVersionId = "";
         renderAll();
         toast("已刪除版本。");
+      });
+    });
+    els.versionList.querySelectorAll("[data-version-cancel-delete]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (state.pendingDeleteVersionId === button.dataset.versionCancelDelete) {
+          state.pendingDeleteVersionId = "";
+        }
+        renderVersions();
       });
     });
   }
