@@ -995,13 +995,29 @@
   function renderCourseCard(lesson, issueIds, options) {
     const isConflict = issueIds.has(lesson.id);
     const classes = ["course-card"];
+    const printSimple = Boolean(state.printAllWeeks);
     if (lesson.isLocked) classes.push("locked");
     if (isConflict) classes.push("conflict");
     if (lesson.id === state.adjustLessonId) classes.push("adjusting");
+    if (printSimple) classes.push("print-simple");
     const draggable = options.draggable ? "true" : "false";
     const title = options.showClass
       ? `${global.DgConstraints.className(state.data, lesson.classId)}｜${lesson.subject}`
       : lesson.subject;
+    if (printSimple) {
+      return `
+        <article class="${classes.join(" ")}" draggable="false" data-lesson-id="${escapeHtml(lesson.id)}">
+          <div class="course-main">
+            <strong class="course-subject">${escapeHtml(title)}</strong>
+          </div>
+          ${
+            options.showClass
+              ? ""
+              : `<div class="course-meta"><span>${escapeHtml(global.DgConstraints.teacherName(state.data, lesson.teacherId))}</span></div>`
+          }
+        </article>
+      `;
+    }
     const canAdjustLesson = canEdit() && !lesson.isLocked && !options.showClass && !state.adjustLessonId;
     return `
       <article class="${classes.join(" ")}" draggable="${draggable}" data-lesson-id="${escapeHtml(lesson.id)}">
@@ -1180,6 +1196,11 @@
     );
   }
 
+  function teacherOptionLabel(teacher, classId) {
+    const isClassTeacher = global.DgConstraints.teacherCanTeachClass(teacher, classId);
+    return `${teacher.teacherName}老師（${isClassTeacher ? "該班授課教師" : "非該班授課教師"}）`;
+  }
+
   function renderLessonSubjectOptions(classId) {
     els.lessonSubject.innerHTML = subjectsForClass(classId)
       .map((subject) => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
@@ -1191,23 +1212,26 @@
     const classId = state.selectedSlot?.classId || state.selectedClassId;
     const assignedTeacherId = assignedTeacherForClassSubject(classId, subject, state.selectedSlot?.lessonId);
     let teachers = (state.data.teachers || []).filter(
-      (teacher) =>
-        (teacher.subjects || []).includes(subject) &&
-        global.DgConstraints.teacherCanTeachClass(teacher, classId)
+      (teacher) => (teacher.subjects || []).includes(subject)
     );
-    if (assignedTeacherId) {
-      teachers = teachers.filter((teacher) => teacher.teacherId === assignedTeacherId);
-    }
+    teachers = teachers.slice().sort((a, b) => {
+      const aClassTeacher = global.DgConstraints.teacherCanTeachClass(a, classId) ? 0 : 1;
+      const bClassTeacher = global.DgConstraints.teacherCanTeachClass(b, classId) ? 0 : 1;
+      if (aClassTeacher !== bClassTeacher) return aClassTeacher - bClassTeacher;
+      return a.teacherName.localeCompare(b.teacherName, "zh-Hant");
+    });
     els.lessonTeacher.innerHTML = teachers.length
       ? teachers
-          .map((teacher) => `<option value="${escapeHtml(teacher.teacherId)}">${escapeHtml(teacher.teacherName)}</option>`)
+          .map(
+            (teacher) =>
+              `<option value="${escapeHtml(teacher.teacherId)}">${escapeHtml(teacherOptionLabel(teacher, classId))}</option>`
+          )
           .join("")
       : `<option value="">沒有可用教師</option>`;
-    els.lessonTeacher.disabled = !teachers.length || Boolean(assignedTeacherId);
+    els.lessonTeacher.disabled = !teachers.length;
     if (preferredTeacherId && teachers.some((teacher) => teacher.teacherId === preferredTeacherId)) {
       els.lessonTeacher.value = preferredTeacherId;
-    }
-    if (assignedTeacherId && teachers.length) {
+    } else if (assignedTeacherId && teachers.some((teacher) => teacher.teacherId === assignedTeacherId)) {
       els.lessonTeacher.value = assignedTeacherId;
     }
     if (state.selectedSlot) {

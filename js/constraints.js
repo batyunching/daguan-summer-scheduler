@@ -90,6 +90,11 @@
     );
   }
 
+  function isManualTeacherOverride(lesson) {
+    const source = String(lesson?.source || "").toLowerCase();
+    return source === "manual" || source === "pre";
+  }
+
   function getSocialSubjectsForClass(assignments, classId) {
     const row = (assignments || []).find((item) => item.classId === classId);
     if (!row) return [];
@@ -517,12 +522,14 @@
       }
 
       if (teacherInfo && !teacherCanTeachClass(teacherInfo, lesson.classId)) {
+        const manualOverride = isManualTeacherOverride(lesson);
         pushIssue(
           issues,
-          "error",
+          manualOverride ? "warning" : "error",
           "TEACHER_CLASS_LIMIT",
           `${teacherSubjectLabel(teacherInfo, [lesson.subject])} 未設定可授課 ${className(data, lesson.classId)}。`,
-          [lessonId]
+          [lessonId],
+          manualOverride ? "這是手動預排/補課代課例外；請確認管理者已同意由非該班授課教師支援。" : ""
         );
       }
 
@@ -630,14 +637,16 @@
     classSubjectTeachers.forEach((lessons) => {
       const teacherIds = Array.from(new Set(lessons.map((lesson) => lesson.teacherId).filter(Boolean)));
       if (teacherIds.length > 1) {
+        const manualOverride = lessons.some(isManualTeacherOverride);
         pushIssue(
           issues,
-          "error",
-          "CLASS_SUBJECT_TEACHER_SPLIT",
+          manualOverride ? "warning" : "error",
+          manualOverride ? "CLASS_SUBJECT_SUBSTITUTE_TEACHER" : "CLASS_SUBJECT_TEACHER_SPLIT",
           `${className(data, lessons[0].classId)}「${lessons[0].subject}」被排給 ${teacherIds
             .map((teacherId) => teacherLabel(data, teacherId, lessons[0].subject))
             .join("、")}，同一班同一科目必須由同一位老師授課。`,
-          lessons.map((item) => item.id)
+          lessons.map((item) => item.id),
+          manualOverride ? "若這是為了補足節數的代課安排，可保留；請確認管理者已同意同科其他老師支援。" : ""
         );
       }
     });
@@ -675,6 +684,22 @@
       (data.classes || []).forEach((classInfo) => {
         const quotas = (data.courseQuotas || []).filter((quota) => String(quota.grade) === String(classInfo.grade));
         const missingQuotas = [];
+        const selectedSocialSubjects = global.DgSocialAssignment.configuredSubjectsForClass(data, classInfo.classId);
+        const hasSocialBundleQuota = quotas.some((quota) => quota.subject === "社會" && Number(quota.targetPeriods) > 0);
+        selectedSocialSubjects.forEach((subject) => {
+          if (!global.DgConfig.socialSubjects.includes(subject)) return;
+          const hasDirectQuota = quotas.some((quota) => quota.subject === subject && Number(quota.targetPeriods) > 0);
+          if (!hasDirectQuota && !hasSocialBundleQuota) {
+            pushIssue(
+              issues,
+              "warning",
+              "SOCIAL_SUBJECT_QUOTA_MISSING",
+              `${classInfo.className} 已設定社會科「${subject}」，但 ${classInfo.grade} 年級「課程節數配額」沒有 ${subject} 的目標節數。`,
+              [],
+              `請到「課程節數配額」新增 ${classInfo.grade} 年級「${subject}」目標節數，例如 10 節；或新增 ${classInfo.grade} 年級「社會」總節數，讓系統依社會科安排分配。沒有配額時，系統不會產生 ${subject} 的排課任務。`
+            );
+          }
+        });
         quotas.forEach((quota) => {
           if (
             global.DgConfig.socialSubjects.includes(quota.subject) &&
