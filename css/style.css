@@ -867,6 +867,34 @@ h2 {
   border-left-width: 8px;
 }
 
+.version-item.confirm-delete {
+  border-color: rgba(190, 58, 74, 0.4);
+  background: #fff7f8;
+}
+
+.version-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.confirm-delete-message {
+  margin: 8px 0;
+  color: #9f2936;
+  font-weight: 800;
+}
+
+.danger-action {
+  color: #fff;
+  border-color: #be3a4a;
+  background: #be3a4a;
+}
+
+.danger-action:hover {
+  background: #9f2936;
+}
+
 .schema-card small {
   display: block;
   margin-top: 3px;
