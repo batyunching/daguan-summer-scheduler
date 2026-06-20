@@ -1323,4 +1323,13 @@ h2 {
     padding: 7px;
     break-inside: avoid;
   }
+
+  .course-card.print-simple {
+    min-height: 44px;
+    gap: 4px;
+  }
+
+  .course-card.print-simple .course-meta {
+    font-size: 10px;
+  }
 }
