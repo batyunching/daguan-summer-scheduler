@@ -872,6 +872,16 @@ h2 {
   background: #fff7f8;
 }
 
+.version-recovery-notice {
+  padding: 12px;
+  border: 1px solid #9cc8c1;
+  border-left: 6px solid var(--primary);
+  border-radius: var(--radius);
+  color: #14564f;
+  background: #effbf8;
+  font-weight: 750;
+}
+
 .version-actions {
   display: flex;
   gap: 8px;
