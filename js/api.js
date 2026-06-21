@@ -8,6 +8,7 @@
     Room_Settings: "rooms",
     Social_Assignment: "socialAssignments",
     Pre_Assignments: "preAssignments",
+    Schedule_Database: "scheduleDatabase",
     Schedule_Versions: "versions",
     Change_Log: "changeLog",
   };
@@ -279,6 +280,32 @@
       mode: normalizeMode(row.mode),
       teacherA: normalizeTeacherReference(data, row.teacherA),
       teacherB: normalizeTeacherReference(data, row.teacherB),
+    }));
+
+    data.scheduleDatabase = (data.scheduleDatabase || []).map((row) => ({
+      ...row,
+      versionId: asText(row.versionId),
+      week: parseNumber(row.week, 1),
+      day: parseNumber(row.day, 1),
+      period: parseNumber(row.period, 1),
+      classId: asText(row.classId),
+      subject: asText(row.subject),
+      teacherId: asText(row.teacherId),
+      roomType: asText(row.roomType || "普通"),
+      isLocked: parseBool(row.isLocked),
+      fatigueApproved: parseBool(row.fatigueApproved),
+      createdAt: asText(row.createdAt),
+      updatedAt: asText(row.updatedAt),
+    }));
+
+    data.versions = (data.versions || []).map((row) => ({
+      ...row,
+      versionId: asText(row.versionId),
+      versionName: asText(row.versionName),
+      createdBy: asText(row.createdBy),
+      createdAt: asText(row.createdAt),
+      note: asText(row.note),
+      isActive: parseBool(row.isActive),
     }));
 
     return data;

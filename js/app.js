@@ -19,6 +19,7 @@
     undoStack: [],
     redoStack: [],
     pendingDeleteVersionId: "",
+    recoveredVersionCount: 0,
   };
 
   const ALL_WEEKS_VALUE = "all";
@@ -71,6 +72,11 @@
       toast(`讀取遠端資料失敗，已改用示範資料：${error.message}`, "error");
     }
     state.data.socialAssignments = global.DgSocialAssignment.autoAssign(state.data, true);
+    const versionSync = global.DgVersion.syncRemoteVersions(
+      state.data.versions || [],
+      state.data.scheduleDatabase || []
+    );
+    state.recoveredVersionCount = versionSync.recoveredCount;
     return loadedRemote;
   }
 
@@ -85,9 +91,15 @@
       "";
     state.viewMode = state.currentUser?.role === "teacher" ? "teacher" : "class";
 
-    const activeVersion = global.DgVersion.listVersions().find((version) => version.isActive);
-    if (activeVersion?.schedule?.length) {
-      state.schedule = activeVersion.schedule;
+    const versions = global.DgVersion.listVersions();
+    const activeVersion =
+      versions.find((version) => version.isActive) ||
+      versions.find((version) => version.schedule?.length);
+    const loadedVersion = activeVersion
+      ? global.DgVersion.loadVersion(activeVersion.versionId) || activeVersion
+      : null;
+    if (loadedVersion?.schedule?.length) {
+      state.schedule = loadedVersion.schedule;
       state.unplaced = [];
     } else {
       const result = global.DgScheduler.autoSchedule(state.data, []);
@@ -1702,8 +1714,12 @@
 
   function renderVersions() {
     const versions = global.DgVersion.listVersions();
+    const recoveryNotice = state.recoveredVersionCount
+      ? `<article class="version-recovery-notice">已從「課表資料庫」找回 ${state.recoveredVersionCount} 個缺少版本索引的課表。請按「載入」確認內容，再建立新版本完成歸檔。</article>`
+      : "";
     els.versionList.innerHTML = versions.length
-      ? versions
+      ? recoveryNotice +
+        versions
           .map(
             (version) => {
               const confirmingDelete = state.pendingDeleteVersionId === version.versionId;

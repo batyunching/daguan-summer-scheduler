@@ -1,5 +1,5 @@
 (function (global) {
-  const APP_BUILD = "20260620-3";
+  const APP_BUILD = "20260621-1";
 
   const DAYS = [
     { id: 1, label: "星期一", short: "一" },
@@ -375,6 +375,7 @@
         note: "示範預排，可再拖拉調整",
       },
     ],
+    scheduleDatabase: [],
     versions: [],
     changeLog: [],
   };
