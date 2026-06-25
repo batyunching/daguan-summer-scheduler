@@ -828,12 +828,13 @@
     if (relatedIssue) return relatedIssue.message;
     const first = issues[0];
     if (!first) return "目前課表有硬性衝突，請先檢查衝突。";
-    return `目前課表另有硬性衝突，需先處理才能套用${actionLabel || "這次調整"}：${first.message}`;
+    return `目前課表另有硬性衝突，管理者可確認後先套用${actionLabel || "這次調整"}：${first.message}`;
   }
 
   function moveLesson(schedule, lessonId, target, data, options) {
     const settings = {
       allowClassSubjectFatigue: false,
+      allowConflictOverride: false,
       ...(options || {}),
     };
     const current = (schedule || []).find((lesson) => lesson.id === lessonId);
@@ -872,18 +873,41 @@
       return lesson;
     });
 
+    const fatigueWarnings = moveFatigueWarnings(next, current, targetLesson, originalSlot, targetSlot, data);
     const hardErrors = global.DgConstraints.getHardErrors(next, data, {
       allowClassSubjectFatigue: true,
     });
     if (hardErrors.length) {
+      if (settings.allowConflictOverride) {
+        const approvedSchedule = settings.allowClassSubjectFatigue
+          ? approveFatigueGroups(
+              next,
+              [
+                { slot: targetSlot, subject: current.subject },
+                targetLesson ? { slot: originalSlot, subject: targetLesson.subject } : null,
+              ].filter(Boolean)
+            )
+          : next;
+        return { ok: true, schedule: approvedSchedule, warnings: hardErrors.map((issue) => issue.message) };
+      }
+
+      const conflictMessage = hardErrorMessage(hardErrors, [current.id, targetLesson?.id], "這次調課");
       return {
         ok: false,
-        message: hardErrorMessage(hardErrors, [current.id, targetLesson?.id], "這次調課"),
+        canConfirm: true,
+        confirmationType: "HARD_CONFLICT_OVERRIDE",
+        message: conflictMessage,
+        warnings: [
+          conflictMessage,
+          ...fatigueWarnings,
+        ],
+        previewSchedule: next,
         issues: hardErrors,
+        requiresConflictOverride: true,
+        requiresFatigueApproval: fatigueWarnings.length > 0,
       };
     }
 
-    const fatigueWarnings = moveFatigueWarnings(next, current, targetLesson, originalSlot, targetSlot, data);
     if (fatigueWarnings.length && !settings.allowClassSubjectFatigue) {
       return {
         ok: false,
@@ -908,7 +932,11 @@
     return { ok: true, schedule: approvedSchedule, warnings: fatigueWarnings };
   }
 
-  function upsertLesson(schedule, lessonInput, data) {
+  function upsertLesson(schedule, lessonInput, data, options) {
+    const settings = {
+      allowConflictOverride: false,
+      ...(options || {}),
+    };
     const slot = {
       classId: lessonInput.classId,
       week: Number(lessonInput.week),
@@ -933,10 +961,19 @@
     next.push(lesson);
     const hardErrors = global.DgConstraints.getHardErrors(next, data);
     if (hardErrors.length) {
+      const conflictMessage = hardErrorMessage(hardErrors, [lesson.id, existingAtSlot?.id], "這次預排");
+      if (settings.allowConflictOverride) {
+        return { ok: true, schedule: next, lesson, warnings: hardErrors.map((issue) => issue.message) };
+      }
       return {
         ok: false,
-        message: hardErrorMessage(hardErrors, [lesson.id, existingAtSlot?.id], "這次預排"),
+        canConfirm: true,
+        confirmationType: "HARD_CONFLICT_OVERRIDE",
+        message: conflictMessage,
+        warnings: [conflictMessage],
+        previewSchedule: next,
         issues: hardErrors,
+        requiresConflictOverride: true,
       };
     }
     return { ok: true, schedule: next, lesson };

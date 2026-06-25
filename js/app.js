@@ -719,7 +719,7 @@
 
     const targetLesson = targetLessonForSlot(slot);
     const result = global.DgScheduler.moveLesson(state.schedule, lesson.id, slot, state.data);
-    if (result.canConfirm && result.confirmationType === "CLASS_SUBJECT_FATIGUE") {
+    if (result.canConfirm) {
       return {
         kind: "caution",
         label: "需確認",
@@ -727,6 +727,10 @@
         warnings: result.warnings || [result.message],
         previewSchedule: result.previewSchedule,
         targetLesson,
+        allowConflictOverride:
+          result.requiresConflictOverride || result.confirmationType === "HARD_CONFLICT_OVERRIDE",
+        allowClassSubjectFatigue:
+          result.requiresFatigueApproval || result.confirmationType === "CLASS_SUBJECT_FATIGUE",
       };
     }
     if (result.ok) {
@@ -783,7 +787,7 @@
       return `
         <div class="adjust-confirm-panel">
           <strong>尚未選擇目標位置</strong>
-          <span>綠色表示可移入，藍色表示可交換，橘色表示會造成同科一天 4 節，需要再次確認。</span>
+          <span>綠色表示可移入，藍色表示可交換，橘色表示有衝突或需管理者再次確認。</span>
         </div>
       `;
     }
@@ -791,7 +795,7 @@
     const targetLesson = pending.targetLesson;
     const targetText = `${slotText(pending.target)}${targetLesson ? `，與「${targetLesson.subject}」交換` : ""}`;
     const warningText = pending.requiresConfirmation
-      ? `<p class="adjust-warning">不建議這樣調課：${escapeHtml((pending.warnings || []).join(" "))} 若仍要調課，請再次按「我了解，仍要調課」。</p>`
+      ? `<p class="adjust-warning">系統提醒：${escapeHtml((pending.warnings || []).join(" "))} 管理人是否確定調課或修改？若仍要調課，請再次按「我了解，仍要調課」。</p>`
       : "";
 
     return `
@@ -1068,6 +1072,8 @@
       previewSchedule,
       warnings: status.warnings || [],
       requiresConfirmation: status.kind === "caution",
+      allowConflictOverride: Boolean(status.allowConflictOverride),
+      allowClassSubjectFatigue: Boolean(status.allowClassSubjectFatigue),
     };
     closeEditor();
     renderAll();
@@ -1077,7 +1083,8 @@
   function confirmPendingMove() {
     if (!state.pendingMove || !state.adjustLessonId) return;
     handleMoveLesson(state.adjustLessonId, state.pendingMove.target, {
-      allowClassSubjectFatigue: state.pendingMove.requiresConfirmation,
+      allowClassSubjectFatigue: state.pendingMove.allowClassSubjectFatigue,
+      allowConflictOverride: state.pendingMove.allowConflictOverride,
     });
   }
 
@@ -1275,19 +1282,43 @@
       els.editorMessage.textContent = "沒有符合授課班級與科目的教師。";
       return;
     }
+    const lessonInput = {
+      id: state.selectedSlot.lessonId,
+      ...state.selectedSlot,
+      subject: els.lessonSubject.value,
+      teacherId: els.lessonTeacher.value,
+      roomType: els.lessonRoom.value,
+      isLocked: els.lessonLocked.checked,
+      note: els.lessonNote.value.trim(),
+    };
     const result = global.DgScheduler.upsertLesson(
       state.schedule,
-      {
-        id: state.selectedSlot.lessonId,
-        ...state.selectedSlot,
-        subject: els.lessonSubject.value,
-        teacherId: els.lessonTeacher.value,
-        roomType: els.lessonRoom.value,
-        isLocked: els.lessonLocked.checked,
-        note: els.lessonNote.value.trim(),
-      },
+      lessonInput,
       state.data
     );
+    if (result.canConfirm) {
+      const confirmed = window.confirm(`${result.message}\n\n管理人是否確定調課或修改？`);
+      if (!confirmed) {
+        els.editorMessage.textContent = "已取消套用，請調整課程或先處理衝突。";
+        return;
+      }
+      const confirmedResult = global.DgScheduler.upsertLesson(state.schedule, lessonInput, state.data, {
+        allowConflictOverride: true,
+      });
+      if (!confirmedResult.ok) {
+        els.editorMessage.textContent = confirmedResult.message;
+        return;
+      }
+      applyScheduleChange(
+        confirmedResult.schedule,
+        [],
+        state.selectedSlot.lessonId ? "確認衝突並更新預排課程" : "確認衝突並新增預排課程"
+      );
+      closeEditor();
+      renderAll();
+      toast("已依管理者確認套用，請到衝突檢查確認後續處理。");
+      return;
+    }
     if (!result.ok) {
       els.editorMessage.textContent = result.message;
       return;
@@ -1315,7 +1346,24 @@
     if (!canEdit()) return;
     const result = global.DgScheduler.moveLesson(state.schedule, lessonId, target, state.data, options);
     if (result.canConfirm) {
-      toast(`${result.message} 請使用調課預覽中的確認按鈕。`, "error");
+      const confirmed = window.confirm(`${result.message}\n\n管理人是否確定調課或修改？`);
+      if (!confirmed) {
+        toast("已取消調課。");
+        return;
+      }
+      const confirmedResult = global.DgScheduler.moveLesson(state.schedule, lessonId, target, state.data, {
+        allowClassSubjectFatigue:
+          result.requiresFatigueApproval || result.confirmationType === "CLASS_SUBJECT_FATIGUE",
+        allowConflictOverride:
+          result.requiresConflictOverride || result.confirmationType === "HARD_CONFLICT_OVERRIDE",
+      });
+      if (!confirmedResult.ok) {
+        toast(confirmedResult.message, "error");
+        return;
+      }
+      applyScheduleChange(confirmedResult.schedule, [], "確認衝突並調課");
+      renderAll();
+      toast("已依管理者確認完成調課，請到衝突檢查確認後續處理。");
       return;
     }
     if (!result.ok) {
