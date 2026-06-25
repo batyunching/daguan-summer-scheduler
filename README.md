@@ -24,7 +24,7 @@
 
 直接開啟 `index.html` 即可測試示範資料。部署到 GitHub Pages 時，將整個資料夾推到 repository，並啟用 Pages。
 
-若上傳 GitHub Pages 後看不到右上角「版本 20260621-1」，代表 Pages 仍讀到舊版 `index.html` 或檔案沒有覆蓋到正確位置。請確認 `index.html` 在 repository 根目錄，`js/app.js`、`js/constraints.js`、`js/scheduler.js` 在 `js` 資料夾內，再等 GitHub Pages 完成部署後強制重新整理。
+若上傳 GitHub Pages 後看不到右上角「版本 20260625-1」，代表 Pages 仍讀到舊版 `index.html` 或檔案沒有覆蓋到正確位置。請確認 `index.html` 在 repository 根目錄，`js/app.js`、`js/constraints.js`、`js/scheduler.js` 在 `js` 資料夾內，再等 GitHub Pages 完成部署後強制重新整理。
 
 手動預排或調課時，系統會先檢查整張課表是否仍有硬性衝突。若有衝突，系統會提醒管理者並詢問是否確定調課或修改；管理者確認後可先套用調整，但衝突仍會保留在「衝突檢查」中，建立正式版本前仍必須處理硬性衝突。
 
