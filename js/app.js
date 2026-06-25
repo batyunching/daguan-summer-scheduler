@@ -1723,11 +1723,20 @@
   async function handleCreateVersion(event) {
     event.preventDefault();
     refreshIssues();
-    if (hardIssues().length) {
+    const hardIssueCount = hardIssues().length;
+    if (hardIssueCount) {
+      const confirmed = window.confirm(
+        `目前仍有 ${hardIssueCount} 項硬性衝突。\n\n管理人是否確定仍要儲存版本？`
+      );
+      if (!confirmed) {
+        state.activeView = "conflicts";
+        renderAll();
+        toast("已取消儲存版本，請先處理硬性衝突。", "error");
+        return;
+      }
       state.activeView = "conflicts";
       renderAll();
-      toast("仍有硬性衝突，暫不能儲存版本。", "error");
-      return;
+      toast("管理者已確認仍要儲存版本，系統會保留衝突提醒。");
     }
 
     const versionInput = {
@@ -1757,7 +1766,7 @@
     els.versionName.value = "";
     els.versionNote.value = "";
     renderAll();
-    toast("已建立課表版本。");
+    toast(hardIssueCount ? "已建立含衝突提醒的課表版本。" : "已建立課表版本。");
   }
 
   function renderVersions() {
